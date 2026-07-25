@@ -13,6 +13,7 @@ import net.minecraft.util.math.Vec3d;
 public class RegionRenderer {
     public static void renderRegion(WorldRenderContext context, BlockPos pos1, BlockPos pos2) {
         if (pos1 == null || pos2 == null) return;
+        if (context.consumers() == null) return;
 
         MinecraftClient client = MinecraftClient.getInstance();
         Camera camera = client.gameRenderer.getCamera();
@@ -67,7 +68,16 @@ public class RegionRenderer {
                                 float x2, float y2, float z2,
                                 float red, float green, float blue, float alpha) {
         MatrixStack.Entry entry = matrices.peek();
-        vertexConsumer.vertex(entry, x1, y1, z1).color(red, green, blue, alpha).normal(0, 0, 0);
-        vertexConsumer.vertex(entry, x2, y2, z2).color(red, green, blue, alpha).normal(0, 0, 0);
+        float dx = x2 - x1;
+        float dy = y2 - y1;
+        float dz = z2 - z1;
+        float length = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (length > 0.0001f) {
+            dx /= length;
+            dy /= length;
+            dz /= length;
+        }
+        vertexConsumer.vertex(entry, x1, y1, z1).color(red, green, blue, alpha).normal(dx, dy, dz).lineWidth(2.0f);
+        vertexConsumer.vertex(entry, x2, y2, z2).color(red, green, blue, alpha).normal(dx, dy, dz).lineWidth(2.0f);
     }
 }
