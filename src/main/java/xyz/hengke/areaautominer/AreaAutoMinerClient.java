@@ -20,9 +20,41 @@ import org.lwjgl.glfw.GLFW;
 public class AreaAutoMinerClient implements ClientModInitializer {
     private BlockPos pos1 = null, pos2 = null;
     private boolean kPressedLastTick = false;
+    private AreaMiner areaMiner;
 
     @Override
     public void onInitializeClient() {
+        areaMiner = new AreaMiner();
+        areaMiner.setListener(new AreaMiner.MiningListener() {
+            @Override
+            public void onMineComplete() {
+                MinecraftClient client = MinecraftClient.getInstance();
+                if (client.player != null) {
+                    client.player.sendMessage(Text.literal("§a挖掘完成！"), false);
+                }
+            }
+
+            @Override
+            public void onBlockSkipped(BlockPos pos) {
+                // 已在 AreaMiner 中处理
+            }
+
+            @Override
+            public void onBlockMined(BlockPos pos) {
+                // 可选：添加挖掘完成的视觉反馈
+            }
+
+            @Override
+            public void onStartMining(BlockPos pos1, BlockPos pos2) {
+                // 可选：添加开始挖掘的视觉反馈
+            }
+
+            @Override
+            public void onStopMining() {
+                // 可选：添加停止挖掘的视觉反馈
+            }
+        });
+
         ClientTickEvents.END_CLIENT_TICK.register(this::onClientTick);
         UseItemCallback.EVENT.register(this::onSwordUse);
         WorldRenderEvents.AFTER_ENTITIES.register(this::onRenderWorld);
@@ -32,16 +64,16 @@ public class AreaAutoMinerClient implements ClientModInitializer {
         boolean kPressed = GLFW.glfwGetKey(client.getWindow().getHandle(), GLFW.GLFW_KEY_K) == GLFW.GLFW_PRESS;
         if (kPressed && !kPressedLastTick) {
             if (client.player != null) {
-                if (!AreaMiner.isMining()) {
-                    AreaMiner.startMining(pos1, pos2);
+                if (!areaMiner.isMining()) {
+                    areaMiner.startMining(pos1, pos2);
                 } else {
-                    AreaMiner.stopMining();
+                    areaMiner.stopMining();
                 }
             }
         }
         kPressedLastTick = kPressed;
-        
-        AreaMiner.tick(client);
+
+        areaMiner.tick(client);
     }
 
     private void onRenderWorld(WorldRenderContext context) {
