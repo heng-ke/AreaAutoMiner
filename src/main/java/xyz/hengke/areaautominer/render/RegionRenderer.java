@@ -1,4 +1,4 @@
-package xyz.hengke.areaautominer;
+package xyz.hengke.areaautominer.render;
 
 import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderContext;
 import net.minecraft.client.MinecraftClient;

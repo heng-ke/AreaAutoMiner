@@ -16,16 +16,19 @@ import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import org.lwjgl.glfw.GLFW;
+import xyz.hengke.areaautominer.controller.MiningController;
+import xyz.hengke.areaautominer.listener.MiningListener;
+import xyz.hengke.areaautominer.render.RegionRenderer;
 
 public class AreaAutoMinerClient implements ClientModInitializer {
     private BlockPos pos1 = null, pos2 = null;
     private boolean kPressedLastTick = false;
-    private AreaMiner areaMiner;
+    private MiningController miningController;
 
     @Override
     public void onInitializeClient() {
-        areaMiner = new AreaMiner();
-        areaMiner.setListener(new AreaMiner.MiningListener() {
+        miningController = new MiningController(MinecraftClient.getInstance());
+        miningController.setListener(new MiningListener() {
             @Override
             public void onMineComplete() {
                 MinecraftClient client = MinecraftClient.getInstance();
@@ -64,16 +67,16 @@ public class AreaAutoMinerClient implements ClientModInitializer {
         boolean kPressed = GLFW.glfwGetKey(client.getWindow().getHandle(), GLFW.GLFW_KEY_K) == GLFW.GLFW_PRESS;
         if (kPressed && !kPressedLastTick) {
             if (client.player != null) {
-                if (!areaMiner.isMining()) {
-                    areaMiner.startMining(pos1, pos2);
+                if (!miningController.isMining()) {
+                    miningController.startMining(pos1, pos2);
                 } else {
-                    areaMiner.stopMining();
+                    miningController.stopMining();
                 }
             }
         }
         kPressedLastTick = kPressed;
 
-        areaMiner.tick(client);
+        miningController.tick();
     }
 
     private void onRenderWorld(WorldRenderContext context) {
