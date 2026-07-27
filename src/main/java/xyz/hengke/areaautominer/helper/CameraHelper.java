@@ -1,19 +1,21 @@
 package xyz.hengke.areaautominer.helper;
 
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.text.Text;
 import net.minecraft.util.math.BlockPos;
 import xyz.hengke.areaautominer.config.MiningConfig;
 import xyz.hengke.areaautominer.context.MiningContext;
 import xyz.hengke.areaautominer.model.MiningState;
+import xyz.hengke.areaautominer.service.NotificationService;
 
 public class CameraHelper {
     private final MiningContext context;
     private final InputHelper inputHelper;
+    private final NotificationService notificationService;
 
-    public CameraHelper(MiningContext context, InputHelper inputHelper) {
+    public CameraHelper(MiningContext context, InputHelper inputHelper, NotificationService notificationService) {
         this.context = context;
         this.inputHelper = inputHelper;
+        this.notificationService = notificationService;
     }
 
     public void faceBlock() {
@@ -25,9 +27,7 @@ public class CameraHelper {
             if (context.waitTicks <= 0) {
                 context.movingWait = false;
                 float currentYaw = client.player.getYaw();
-                float yawDiff = context.targetYaw - currentYaw;
-                while (yawDiff < -180.0F) yawDiff += 360.0F;
-                while (yawDiff > 180.0F) yawDiff -= 360.0F;
+                float yawDiff = SpatialHelper.normalizeYawDiff(context.targetYaw - currentYaw);
                 float pitchDiff = Math.abs(context.targetPitch - client.player.getPitch());
                 context.waitTicks = calculateDynamicWaitTicks(yawDiff, pitchDiff);
                 context.facingRetryCount = 0;
@@ -38,9 +38,7 @@ public class CameraHelper {
 
         float currentYaw = client.player.getYaw();
         float currentPitch = client.player.getPitch();
-        float yawDiff = context.targetYaw - currentYaw;
-        while (yawDiff < -180.0F) yawDiff += 360.0F;
-        while (yawDiff > 180.0F) yawDiff -= 360.0F;
+        float yawDiff = SpatialHelper.normalizeYawDiff(context.targetYaw - currentYaw);
         float pitchDiff = Math.abs(context.targetPitch - currentPitch);
 
         float jitterScale = calculateDynamicJitterScale(yawDiff, pitchDiff);
@@ -75,11 +73,11 @@ public class CameraHelper {
         context.waitTicks--;
         if (context.waitTicks <= 0) {
             float finalNoise = jitterScale * 2.0f;
-            
+
             if (Math.abs(yawDiff) > 5.0F || pitchDiff > 5.0F) {
                 context.facingRetryCount++;
                 if (context.facingRetryCount > MiningConfig.MAX_FACING_RETRIES) {
-                    logDebug("转向重试次数过多，强制开始挖掘");
+                    notificationService.logDebug("转向重试次数过多，强制开始挖掘");
                     client.player.setYaw(context.targetYaw + (float)(Math.random() - 0.5) * finalNoise);
                     client.player.setPitch(context.targetPitch + (float)(Math.random() - 0.5) * (finalNoise * 0.75f));
                     context.firstBreakTick = true;
@@ -90,13 +88,13 @@ public class CameraHelper {
                 context.waitTicks = 2;
                 return;
             }
-            
+
             client.player.setYaw(context.targetYaw + (float)(Math.random() - 0.5) * finalNoise);
             client.player.setPitch(context.targetPitch + (float)(Math.random() - 0.5) * (finalNoise * 0.75f));
             context.firstBreakTick = true;
             context.breakTicks = 0;
             context.state = MiningState.BREAKING;
-            logDebug("转向完成，开始挖掘");
+            notificationService.logDebug("转向完成，开始挖掘");
         }
     }
 
@@ -112,7 +110,7 @@ public class CameraHelper {
 
     public int calculateDynamicWaitTicks(float yawDiff, float pitchDiff) {
         float maxDiff = Math.max(Math.abs(yawDiff), pitchDiff);
-        
+
         if (maxDiff < 15.0F) {
             return 2;
         } else if (maxDiff < 45.0F) {
@@ -126,7 +124,7 @@ public class CameraHelper {
 
     public float calculateDynamicJitterScale(float yawDiff, float pitchDiff) {
         float maxDiff = Math.max(Math.abs(yawDiff), pitchDiff);
-        
+
         if (maxDiff < 15.0F) {
             return 0.15f;
         } else if (maxDiff < 45.0F) {
@@ -138,12 +136,9 @@ public class CameraHelper {
         }
     }
 
-    private void logDebug(String message) {
-        if (MiningConfig.DEBUG) {
-            MinecraftClient client = context.client;
-            if (client.player != null) {
-                client.player.sendMessage(Text.literal("§7[DEBUG] " + message), false);
-            }
-        }
+    public float smoothYawTowards(float currentYaw, float targetYaw, float maxDelta) {
+        float yawDiff = SpatialHelper.normalizeYawDiff(targetYaw - currentYaw);
+        yawDiff = Math.max(-maxDelta, Math.min(maxDelta, yawDiff));
+        return currentYaw + yawDiff;
     }
 }

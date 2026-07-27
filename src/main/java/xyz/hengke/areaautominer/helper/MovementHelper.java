@@ -1,31 +1,35 @@
 package xyz.hengke.areaautominer.helper;
 
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.text.Text;
 import net.minecraft.util.math.BlockPos;
 import xyz.hengke.areaautominer.config.MiningConfig;
 import xyz.hengke.areaautominer.context.MiningContext;
 import xyz.hengke.areaautominer.model.MiningState;
+import xyz.hengke.areaautominer.service.NotificationService;
 
 public class MovementHelper {
     private final MiningContext context;
     private final InputHelper inputHelper;
     private final CameraHelper cameraHelper;
+    private final AreaIterator areaIterator;
+    private final NotificationService notificationService;
 
-    public MovementHelper(MiningContext context, InputHelper inputHelper, CameraHelper cameraHelper) {
+    public MovementHelper(MiningContext context, InputHelper inputHelper, CameraHelper cameraHelper, AreaIterator areaIterator, NotificationService notificationService) {
         this.context = context;
         this.inputHelper = inputHelper;
         this.cameraHelper = cameraHelper;
+        this.areaIterator = areaIterator;
+        this.notificationService = notificationService;
     }
 
     public void walkToBlock(int minX, int maxX, int minY, int minZ, int maxZ) {
         MinecraftClient client = context.client;
-        
+
         if (context.jumpCooldown > 0) {
             context.jumpCooldown--;
         }
 
-        BlockPos targetPos = new BlockPos(context.currentX, context.currentY, context.currentZ);
+        BlockPos targetPos = areaIterator.getCurrentPos();
         double targetX = targetPos.getX() + 0.5;
         double targetZ = targetPos.getZ() + 0.5;
 
@@ -59,12 +63,12 @@ public class MovementHelper {
                 context.walkTicks = 0;
                 context.stuckCounter = 0;
                 context.walkRetryCount = 0;
-                logDebug("已足够接近目标，开始转向");
+                notificationService.logDebug("已足够接近目标，开始转向");
                 return;
             }
             context.walkRetryCount++;
             if (context.walkRetryCount <= MiningConfig.MAX_WALK_RETRIES) {
-                logDebug("行走超时或卡住，第 " + context.walkRetryCount + " 次重试");
+                notificationService.logDebug("行走超时或卡住，第 " + context.walkRetryCount + " 次重试");
                 inputHelper.releaseAllKeys();
                 context.walkTicks = -10;
                 context.stuckCounter = 0;
@@ -72,16 +76,16 @@ public class MovementHelper {
                 context.lastPlayerZ = client.player.getZ();
                 return;
             }
-            logDebug("行走超时或卡住，重试 " + MiningConfig.MAX_WALK_RETRIES + " 次后仍失败，跳过当前方块");
+            notificationService.logDebug("行走超时或卡住，重试 " + MiningConfig.MAX_WALK_RETRIES + " 次后仍失败，跳过当前方块");
             inputHelper.releaseAllKeys();
             context.walkRetryCount = 0;
-            if (context.listener != null) {
-                context.listener.onBlockSkipped(new BlockPos(context.currentX, context.currentY, context.currentZ));
-            }
-            client.player.sendMessage(Text.literal("§e无法到达方块，跳过: " + context.currentX + "," + context.currentY + "," + context.currentZ), false);
+            notificationService.onBlockSkipped(targetPos);
             context.walkTicks = 0;
             context.stuckCounter = 0;
-            if (!advancePosition(minX, maxX, minY, minZ, maxZ)) return;
+            if (!areaIterator.advancePosition(minX, maxX, minY, minZ, maxZ)) {
+                stopMining();
+                return;
+            }
             context.state = MiningState.FINDING_BLOCK;
             return;
         }
@@ -90,16 +94,16 @@ public class MovementHelper {
             if (targetPos.getY() > client.player.getY()) {
                 BlockPos targetTopPos = targetPos.up();
                 BlockPos targetAboveTopPos = targetPos.up(2);
-                boolean hasSpaceOnTop = client.world.getBlockState(targetTopPos).isAir() && 
+                boolean hasSpaceOnTop = client.world.getBlockState(targetTopPos).isAir() &&
                                          client.world.getBlockState(targetAboveTopPos).isAir();
-                
+
                 if (hasSpaceOnTop && client.player.isOnGround() && context.jumpCooldown == 0) {
                     inputHelper.setKeyPressed(client.options.jumpKey, true);
                     context.jumpCooldown = 10;
-                    logDebug("跳跃到目标方块顶部");
+                    notificationService.logDebug("跳跃到目标方块顶部");
                     return;
                 } else if (!hasSpaceOnTop) {
-                    logDebug("目标方块上方没有足够空间，尝试直接挖掘");
+                    notificationService.logDebug("目标方块上方没有足够空间，尝试直接挖掘");
                 }
             }
             inputHelper.releaseAllKeys();
@@ -110,12 +114,12 @@ public class MovementHelper {
             context.state = MiningState.FACING_BLOCK;
             context.walkTicks = 0;
             context.stuckCounter = 0;
-            logDebug("到达目标位置，准备转向");
+            notificationService.logDebug("到达目标位置，准备转向");
             return;
         }
 
         float walkYaw = (float) Math.atan2(dz, dx) * (180.0F / (float) Math.PI) - 90.0F;
-        float smoothedYaw = smoothYawTowards(client.player.getYaw(), walkYaw, 15.0f);
+        float smoothedYaw = cameraHelper.smoothYawTowards(client.player.getYaw(), walkYaw, 15.0f);
         client.player.setYaw(smoothedYaw);
 
         boolean needJump = checkObstacleInFront(client, dx, dz) && client.player.isOnGround() && context.jumpCooldown == 0;
@@ -123,13 +127,13 @@ public class MovementHelper {
 
         if (wouldFall && !needJump) {
             inputHelper.releaseAllKeys();
-            if (context.listener != null) {
-                context.listener.onBlockSkipped(targetPos);
-            }
-            client.player.sendMessage(Text.literal("§e前方危险，跳过方块: " + context.currentX + "," + context.currentY + "," + context.currentZ), false);
+            notificationService.onBlockSkipped(targetPos);
             context.walkTicks = 0;
             context.stuckCounter = 0;
-            if (!advancePosition(minX, maxX, minY, minZ, maxZ)) return;
+            if (!areaIterator.advancePosition(minX, maxX, minY, minZ, maxZ)) {
+                stopMining();
+                return;
+            }
             context.state = MiningState.FINDING_BLOCK;
             return;
         }
@@ -139,7 +143,7 @@ public class MovementHelper {
         if (needJump) {
             inputHelper.setKeyPressed(client.options.jumpKey, true);
             context.jumpCooldown = 10;
-            logDebug("跳跃越过障碍");
+            notificationService.logDebug("跳跃越过障碍");
         } else {
             inputHelper.setKeyPressed(client.options.jumpKey, false);
         }
@@ -221,42 +225,9 @@ public class MovementHelper {
         return pos.getY() - 6;
     }
 
-    public float smoothYawTowards(float currentYaw, float targetYaw, float maxDelta) {
-        float yawDiff = targetYaw - currentYaw;
-        while (yawDiff < -180.0F) yawDiff += 360.0F;
-        while (yawDiff > 180.0F) yawDiff -= 360.0F;
-        yawDiff = Math.max(-maxDelta, Math.min(maxDelta, yawDiff));
-        return currentYaw + yawDiff;
-    }
-
-    private boolean advancePosition(int minX, int maxX, int minY, int minZ, int maxZ) {
-        context.currentX++;
-        if (context.currentX > maxX) {
-            context.currentX = minX;
-            context.currentZ++;
-            if (context.currentZ > maxZ) {
-                context.currentZ = minZ;
-                context.currentY--;
-                if (context.currentY < minY) {
-                    context.isMining = false;
-                    context.state = MiningState.IDLE;
-                    inputHelper.releaseAllKeys();
-                    if (context.listener != null) {
-                        context.listener.onMineComplete();
-                    }
-                    return false;
-                }
-            }
-        }
-        return true;
-    }
-
-    private void logDebug(String message) {
-        if (MiningConfig.DEBUG) {
-            MinecraftClient client = context.client;
-            if (client.player != null) {
-                client.player.sendMessage(Text.literal("§7[DEBUG] " + message), false);
-            }
-        }
+    private void stopMining() {
+        context.state = MiningState.IDLE;
+        inputHelper.releaseAllKeys();
+        notificationService.onMineComplete();
     }
 }
