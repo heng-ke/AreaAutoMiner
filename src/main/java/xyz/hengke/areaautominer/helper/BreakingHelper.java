@@ -6,19 +6,20 @@ import net.minecraft.world.GameMode;
 import xyz.hengke.areaautominer.config.MiningConfig;
 import xyz.hengke.areaautominer.context.MiningContext;
 import xyz.hengke.areaautominer.model.MiningState;
+import xyz.hengke.areaautominer.service.MiningCompletionService;
 import xyz.hengke.areaautominer.service.NotificationService;
 
 public class BreakingHelper {
     private final MiningContext context;
-    private final InputHelper inputHelper;
     private final AreaIterator areaIterator;
     private final NotificationService notificationService;
+    private final MiningCompletionService completionService;
 
-    public BreakingHelper(MiningContext context, InputHelper inputHelper, AreaIterator areaIterator, NotificationService notificationService) {
+    public BreakingHelper(MiningContext context, AreaIterator areaIterator, NotificationService notificationService, MiningCompletionService completionService) {
         this.context = context;
-        this.inputHelper = inputHelper;
         this.areaIterator = areaIterator;
         this.notificationService = notificationService;
+        this.completionService = completionService;
     }
 
     public void startBreaking(int minX, int maxX, int minY, int minZ, int maxZ) {
@@ -27,7 +28,7 @@ public class BreakingHelper {
 
         if (client.world.getBlockState(targetPos).isAir()) {
             if (!areaIterator.advancePosition(minX, maxX, minY, minZ, maxZ)) {
-                stopMining();
+                completionService.completeMining();
                 return;
             }
             context.state = MiningState.FINDING_BLOCK;
@@ -66,10 +67,10 @@ public class BreakingHelper {
 
         context.breakTicks++;
         if (context.breakTicks > MiningConfig.MAX_BREAK_TICKS) {
-            notificationService.onBlockSkipped(targetPos);
+            completionService.onBlockSkipped(targetPos);
             context.breakTicks = 0;
             if (!areaIterator.advancePosition(minX, maxX, minY, minZ, maxZ)) {
-                stopMining();
+                completionService.completeMining();
                 return;
             }
             context.state = MiningState.FINDING_BLOCK;
@@ -82,9 +83,9 @@ public class BreakingHelper {
         if (gameMode == GameMode.CREATIVE) {
             client.interactionManager.breakBlock(targetPos);
             client.player.swingHand(net.minecraft.util.Hand.MAIN_HAND);
-            notificationService.onBlockMined(targetPos);
+            completionService.onBlockMined(targetPos);
             if (!areaIterator.advancePosition(minX, maxX, minY, minZ, maxZ)) {
-                stopMining();
+                completionService.completeMining();
                 return;
             }
             context.state = MiningState.FINDING_BLOCK;
@@ -99,10 +100,10 @@ public class BreakingHelper {
             client.player.swingHand(net.minecraft.util.Hand.MAIN_HAND);
 
             if (client.world.getBlockState(targetPos).isAir()) {
-                notificationService.onBlockMined(targetPos);
+                completionService.onBlockMined(targetPos);
                 context.breakTicks = 0;
                 if (!areaIterator.advancePosition(minX, maxX, minY, minZ, maxZ)) {
-                    stopMining();
+                    completionService.completeMining();
                     return;
                 }
                 context.state = MiningState.FINDING_BLOCK;
@@ -114,14 +115,9 @@ public class BreakingHelper {
     private void startWalkingToBlock(MinecraftClient client) {
         context.walkTicks = 0;
         context.stuckCounter = 0;
+        context.walkRetryCount = 0;
         context.lastPlayerX = client.player.getX();
         context.lastPlayerZ = client.player.getZ();
         context.state = MiningState.WALKING_TO_BLOCK;
-    }
-
-    private void stopMining() {
-        context.state = MiningState.IDLE;
-        inputHelper.releaseAllKeys();
-        notificationService.onMineComplete();
     }
 }

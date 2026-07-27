@@ -5,6 +5,7 @@ import net.minecraft.util.math.BlockPos;
 import xyz.hengke.areaautominer.config.MiningConfig;
 import xyz.hengke.areaautominer.context.MiningContext;
 import xyz.hengke.areaautominer.model.MiningState;
+import xyz.hengke.areaautominer.service.MiningCompletionService;
 import xyz.hengke.areaautominer.service.NotificationService;
 
 public class MovementHelper {
@@ -13,13 +14,15 @@ public class MovementHelper {
     private final CameraHelper cameraHelper;
     private final AreaIterator areaIterator;
     private final NotificationService notificationService;
+    private final MiningCompletionService completionService;
 
-    public MovementHelper(MiningContext context, InputHelper inputHelper, CameraHelper cameraHelper, AreaIterator areaIterator, NotificationService notificationService) {
+    public MovementHelper(MiningContext context, InputHelper inputHelper, CameraHelper cameraHelper, AreaIterator areaIterator, NotificationService notificationService, MiningCompletionService completionService) {
         this.context = context;
         this.inputHelper = inputHelper;
         this.cameraHelper = cameraHelper;
         this.areaIterator = areaIterator;
         this.notificationService = notificationService;
+        this.completionService = completionService;
     }
 
     public void walkToBlock(int minX, int maxX, int minY, int minZ, int maxZ) {
@@ -79,11 +82,11 @@ public class MovementHelper {
             notificationService.logDebug("行走超时或卡住，重试 " + MiningConfig.MAX_WALK_RETRIES + " 次后仍失败，跳过当前方块");
             inputHelper.releaseAllKeys();
             context.walkRetryCount = 0;
-            notificationService.onBlockSkipped(targetPos);
+            completionService.onBlockSkipped(targetPos);
             context.walkTicks = 0;
             context.stuckCounter = 0;
             if (!areaIterator.advancePosition(minX, maxX, minY, minZ, maxZ)) {
-                stopMining();
+                completionService.completeMining();
                 return;
             }
             context.state = MiningState.FINDING_BLOCK;
@@ -114,6 +117,7 @@ public class MovementHelper {
             context.state = MiningState.FACING_BLOCK;
             context.walkTicks = 0;
             context.stuckCounter = 0;
+            context.walkRetryCount = 0;
             notificationService.logDebug("到达目标位置，准备转向");
             return;
         }
@@ -123,15 +127,15 @@ public class MovementHelper {
         client.player.setYaw(smoothedYaw);
 
         boolean needJump = checkObstacleInFront(client, dx, dz) && client.player.isOnGround() && context.jumpCooldown == 0;
-        boolean wouldFall = targetPos.getY() > client.player.getY() && checkFallDanger(client, dx, dz);
+        boolean wouldFall = targetPos.getY() <= client.player.getY() && checkFallDanger(client, dx, dz);
 
         if (wouldFall && !needJump) {
             inputHelper.releaseAllKeys();
-            notificationService.onBlockSkipped(targetPos);
+            completionService.onBlockSkipped(targetPos);
             context.walkTicks = 0;
             context.stuckCounter = 0;
             if (!areaIterator.advancePosition(minX, maxX, minY, minZ, maxZ)) {
-                stopMining();
+                completionService.completeMining();
                 return;
             }
             context.state = MiningState.FINDING_BLOCK;
@@ -223,11 +227,5 @@ public class MovementHelper {
             }
         }
         return pos.getY() - 6;
-    }
-
-    private void stopMining() {
-        context.state = MiningState.IDLE;
-        inputHelper.releaseAllKeys();
-        notificationService.onMineComplete();
     }
 }

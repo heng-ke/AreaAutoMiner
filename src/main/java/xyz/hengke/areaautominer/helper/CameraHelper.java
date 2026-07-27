@@ -31,7 +31,6 @@ public class CameraHelper {
                 float pitchDiff = Math.abs(context.targetPitch - client.player.getPitch());
                 context.waitTicks = calculateDynamicWaitTicks(yawDiff, pitchDiff);
                 context.facingRetryCount = 0;
-                calculateTargetLook(new BlockPos(context.currentX, context.currentY, context.currentZ));
             }
             return;
         }

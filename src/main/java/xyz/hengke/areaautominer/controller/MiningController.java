@@ -1,16 +1,17 @@
 package xyz.hengke.areaautominer.controller;
 
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.text.Text;
 import net.minecraft.util.math.BlockPos;
 import xyz.hengke.areaautominer.context.MiningContext;
 import xyz.hengke.areaautominer.finder.BlockFinder;
+import xyz.hengke.areaautominer.helper.AreaIterator;
 import xyz.hengke.areaautominer.helper.BreakingHelper;
 import xyz.hengke.areaautominer.helper.CameraHelper;
 import xyz.hengke.areaautominer.helper.InputHelper;
 import xyz.hengke.areaautominer.helper.MovementHelper;
 import xyz.hengke.areaautominer.listener.MiningListener;
 import xyz.hengke.areaautominer.model.MiningState;
+import xyz.hengke.areaautominer.service.MiningCompletionService;
 import xyz.hengke.areaautominer.service.NotificationService;
 
 public class MiningController {
@@ -26,11 +27,12 @@ public class MiningController {
         this.context = new MiningContext(client);
         this.inputHelper = new InputHelper(context);
         this.notificationService = new NotificationService(context);
+        var completionService = new MiningCompletionService(context, inputHelper, notificationService);
         this.cameraHelper = new CameraHelper(context, inputHelper, notificationService);
-        var areaIterator = new xyz.hengke.areaautominer.helper.AreaIterator(context);
-        this.breakingHelper = new BreakingHelper(context, inputHelper, areaIterator, notificationService);
-        this.movementHelper = new MovementHelper(context, inputHelper, cameraHelper, areaIterator, notificationService);
-        this.blockFinder = new BlockFinder(context, areaIterator, cameraHelper, inputHelper, notificationService);
+        var areaIterator = new AreaIterator(context);
+        this.breakingHelper = new BreakingHelper(context, areaIterator, notificationService, completionService);
+        this.movementHelper = new MovementHelper(context, inputHelper, cameraHelper, areaIterator, notificationService, completionService);
+        this.blockFinder = new BlockFinder(context, areaIterator, cameraHelper, notificationService, completionService);
     }
 
     public void setListener(MiningListener listener) {
@@ -41,7 +43,7 @@ public class MiningController {
         if (context.isMining) return;
         MinecraftClient client = context.client;
         if (p1 == null || p2 == null) {
-            notificationService.sendMessage(Text.literal("§c请先选择区域！"));
+            notificationService.sendMessage("§c请先选择区域！");
             return;
         }
 
@@ -66,7 +68,7 @@ public class MiningController {
         context.jumpCooldown = 0;
         context.state = MiningState.FINDING_BLOCK;
 
-        notificationService.sendMessage(Text.literal("§a开始挖掘区域"));
+        notificationService.sendMessage("§a开始挖掘区域");
         if (context.listener != null) {
             context.listener.onStartMining(p1, p2);
         }
@@ -78,7 +80,7 @@ public class MiningController {
         context.state = MiningState.IDLE;
         inputHelper.releaseAllKeys();
 
-        notificationService.sendMessage(Text.literal("§c停止挖掘"));
+        notificationService.sendMessage("§c停止挖掘");
         if (context.listener != null) {
             context.listener.onStopMining();
         }

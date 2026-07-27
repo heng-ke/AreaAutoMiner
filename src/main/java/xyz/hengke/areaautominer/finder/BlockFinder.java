@@ -6,24 +6,24 @@ import xyz.hengke.areaautominer.config.MiningConfig;
 import xyz.hengke.areaautominer.context.MiningContext;
 import xyz.hengke.areaautominer.helper.AreaIterator;
 import xyz.hengke.areaautominer.helper.CameraHelper;
-import xyz.hengke.areaautominer.helper.InputHelper;
 import xyz.hengke.areaautominer.helper.SpatialHelper;
 import xyz.hengke.areaautominer.model.MiningState;
+import xyz.hengke.areaautominer.service.MiningCompletionService;
 import xyz.hengke.areaautominer.service.NotificationService;
 
 public class BlockFinder {
     private final MiningContext context;
     private final AreaIterator areaIterator;
     private final CameraHelper cameraHelper;
-    private final InputHelper inputHelper;
     private final NotificationService notificationService;
+    private final MiningCompletionService completionService;
 
-    public BlockFinder(MiningContext context, AreaIterator areaIterator, CameraHelper cameraHelper, InputHelper inputHelper, NotificationService notificationService) {
+    public BlockFinder(MiningContext context, AreaIterator areaIterator, CameraHelper cameraHelper, NotificationService notificationService, MiningCompletionService completionService) {
         this.context = context;
         this.areaIterator = areaIterator;
         this.cameraHelper = cameraHelper;
-        this.inputHelper = inputHelper;
         this.notificationService = notificationService;
+        this.completionService = completionService;
     }
 
     public void findNext(MinecraftClient client, int minX, int maxX, int minY, int minZ, int maxZ) {
@@ -32,7 +32,7 @@ public class BlockFinder {
         int airSkipCount = 0;
         while (client.world.getBlockState(targetPos).isAir()) {
             if (!areaIterator.advancePosition(minX, maxX, minY, minZ, maxZ)) {
-                stopMining();
+                completionService.completeMining();
                 return;
             }
             targetPos = areaIterator.getCurrentPos();
@@ -96,15 +96,5 @@ public class BlockFinder {
         context.lastPlayerX = client.player.getX();
         context.lastPlayerZ = client.player.getZ();
         context.state = MiningState.WALKING_TO_BLOCK;
-    }
-
-    private void stopMining() {
-        context.isMining = false;
-        context.state = MiningState.IDLE;
-        inputHelper.releaseAllKeys();
-        notificationService.sendMessage(net.minecraft.text.Text.literal("§a挖掘完成！"));
-        if (context.listener != null) {
-            context.listener.onStopMining();
-        }
     }
 }

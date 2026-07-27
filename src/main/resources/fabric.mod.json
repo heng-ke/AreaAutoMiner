@@ -11,9 +11,10 @@
 		"homepage": "https://github.com/heng-ke/AreaAutoMiner",
 		"sources": "https://github.com/heng-ke/AreaAutoMiner"
 	},
-	"license": "CC0-1.0",
+	"license": "MIT License",
 	"icon": "assets/areaautominer/icon.png",
 	"environment": "*",
+	"accessWidener": "areaautominer.accesswidener",
 	"entrypoints": {
 		"main": [
 			"xyz.hengke.areaautominer.AreaAutoMiner"

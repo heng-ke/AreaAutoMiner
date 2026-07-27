@@ -4,8 +4,6 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.option.KeyBinding;
 import xyz.hengke.areaautominer.context.MiningContext;
 
-import java.lang.reflect.Method;
-
 public class InputHelper {
     private final MiningContext context;
 
@@ -14,13 +12,7 @@ public class InputHelper {
     }
 
     public void setKeyPressed(KeyBinding key, boolean pressed) {
-        try {
-            Method method = KeyBinding.class.getDeclaredMethod("setPressed", boolean.class);
-            method.setAccessible(true);
-            method.invoke(key, pressed);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        key.setPressed(pressed);
     }
 
     public void releaseAllKeys() {
