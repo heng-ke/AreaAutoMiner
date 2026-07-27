@@ -22,8 +22,9 @@ import xyz.hengke.areaautominer.render.RegionRenderer;
 
 public class AreaAutoMinerClient implements ClientModInitializer {
     private BlockPos pos1 = null, pos2 = null;
-    private boolean kPressedLastTick = false;
-    private MiningController miningController;
+    private boolean kPressedLastTick = false; // 用于检测 K 键是否按下
+    private MiningController miningController; // 挖矿控制器
+    private boolean swordUsedThisTick = false; // 用于防止右键重复触发
 
     @Override
     public void onInitializeClient() {
@@ -58,14 +59,14 @@ public class AreaAutoMinerClient implements ClientModInitializer {
             }
         });
 
-        ClientTickEvents.END_CLIENT_TICK.register(this::onClientTick);
-        UseItemCallback.EVENT.register(this::onSwordUse);
-        WorldRenderEvents.AFTER_ENTITIES.register(this::onRenderWorld);
+        ClientTickEvents.END_CLIENT_TICK.register(this::onClientTick);// 注册客户端 tick 事件
+        UseItemCallback.EVENT.register(this::onSwordUse);// 注册物品使用事件
+        WorldRenderEvents.AFTER_ENTITIES.register(this::onRenderWorld);// 注册世界渲染事件
     }
 
     private void onClientTick(MinecraftClient client) {
-        boolean kPressed = GLFW.glfwGetKey(client.getWindow().getHandle(), GLFW.GLFW_KEY_K) == GLFW.GLFW_PRESS;
-        if (kPressed && !kPressedLastTick) {
+        boolean kPressed = GLFW.glfwGetKey(client.getWindow().getHandle(), GLFW.GLFW_KEY_K) == GLFW.GLFW_PRESS;// 检测 K 键是否按下
+        if (kPressed && !kPressedLastTick) {// 检测 K 键是否按下且与上一 tick 不同, 避免重复触发
             if (client.player != null) {
                 if (!miningController.isMining()) {
                     miningController.startMining(pos1, pos2);
@@ -75,8 +76,8 @@ public class AreaAutoMinerClient implements ClientModInitializer {
             }
         }
         kPressedLastTick = kPressed;
-
         miningController.tick();
+        swordUsedThisTick = false;
     }
 
     private void onRenderWorld(WorldRenderContext context) {
@@ -87,6 +88,7 @@ public class AreaAutoMinerClient implements ClientModInitializer {
 
     private ActionResult onSwordUse(PlayerEntity player, World world, Hand hand) {
         if (hand != Hand.MAIN_HAND) return ActionResult.PASS;
+        if (swordUsedThisTick) return ActionResult.PASS;
 
         ItemStack stack = player.getStackInHand(hand);
         if (stack.getItem() != Items.WOODEN_SWORD &&
@@ -98,6 +100,7 @@ public class AreaAutoMinerClient implements ClientModInitializer {
         BlockHitResult hit = (BlockHitResult) player.raycast(5.0, 0.0f, false);
         if (hit == null) return ActionResult.PASS;
 
+        swordUsedThisTick = true;
         if (!player.isSneaking()) {
             pos1 = hit.getBlockPos();
             player.sendMessage(Text.literal("§a点1已记录: " + pos1), false);

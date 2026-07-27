@@ -12,6 +12,7 @@ public class MiningConfig {
     public static final double MAX_REACH_SQUARED = 16.0;
     public static final double ARRIVE_THRESHOLD = 1.2;
     public static final double FALL_DANGER_THRESHOLD = 3.0;
+    public static final double MAX_VERTICAL_DISTANCE = 4.0;
     
     public static final int MAX_WALK_RETRIES = 2;
     public static final int MAX_FACING_RETRIES = 2;

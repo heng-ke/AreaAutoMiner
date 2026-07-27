@@ -14,12 +14,10 @@ import xyz.hengke.areaautominer.model.MiningState;
 public class BreakingHelper {
     private final MiningContext context;
     private final InputHelper inputHelper;
-    private final CameraHelper cameraHelper;
 
-    public BreakingHelper(MiningContext context, InputHelper inputHelper, CameraHelper cameraHelper) {
+    public BreakingHelper(MiningContext context, InputHelper inputHelper) {
         this.context = context;
         this.inputHelper = inputHelper;
-        this.cameraHelper = cameraHelper;
     }
 
     public void startBreaking(int minX, int maxX, int minY, int minZ, int maxZ) {
@@ -27,7 +25,18 @@ public class BreakingHelper {
         BlockPos targetPos = new BlockPos(context.currentX, context.currentY, context.currentZ);
 
         if (client.world.getBlockState(targetPos).isAir()) {
-            if (!advancePosition(minX, maxX, minY, minZ, maxZ)) return;
+            if (!advancePosition(minX, maxX, minY, minZ, maxZ)) {
+                context.isMining = false;
+                context.state = MiningState.IDLE;
+                inputHelper.releaseAllKeys();
+                if (client.player != null) {
+                    client.player.sendMessage(Text.literal("§a挖掘完成！"), false);
+                }
+                if (context.listener != null) {
+                    context.listener.onMineComplete();
+                }
+                return;
+            }
             context.state = MiningState.FINDING_BLOCK;
             return;
         }
@@ -45,7 +54,7 @@ public class BreakingHelper {
         double verticalDistance = Math.abs(dy);
 
         boolean withinHorizontalRange = horizontalDistanceSquared <= MiningConfig.MAX_REACH_SQUARED;
-        boolean withinVerticalRange = verticalDistance <= 4.0;
+        boolean withinVerticalRange = verticalDistance <= MiningConfig.MAX_VERTICAL_DISTANCE;
         
         if (!withinHorizontalRange || !withinVerticalRange || !hasLineOfSight(client, targetPos)) {
             context.walkTicks = 0;
@@ -78,7 +87,18 @@ public class BreakingHelper {
             }
             client.player.sendMessage(Text.literal("§e挖掘超时，跳过方块: " + context.currentX + "," + context.currentY + "," + context.currentZ), false);
             context.breakTicks = 0;
-            if (!advancePosition(minX, maxX, minY, minZ, maxZ)) return;
+            if (!advancePosition(minX, maxX, minY, minZ, maxZ)) {
+                context.isMining = false;
+                context.state = MiningState.IDLE;
+                inputHelper.releaseAllKeys();
+                if (client.player != null) {
+                    client.player.sendMessage(Text.literal("§a挖掘完成！"), false);
+                }
+                if (context.listener != null) {
+                    context.listener.onMineComplete();
+                }
+                return;
+            }
             context.state = MiningState.FINDING_BLOCK;
             return;
         }
@@ -93,7 +113,18 @@ public class BreakingHelper {
             if (context.listener != null) {
                 context.listener.onBlockMined(targetPos);
             }
-            if (!advancePosition(minX, maxX, minY, minZ, maxZ)) return;
+            if (!advancePosition(minX, maxX, minY, minZ, maxZ)) {
+                context.isMining = false;
+                context.state = MiningState.IDLE;
+                inputHelper.releaseAllKeys();
+                if (client.player != null) {
+                    client.player.sendMessage(Text.literal("§a挖掘完成！"), false);
+                }
+                if (context.listener != null) {
+                    context.listener.onMineComplete();
+                }
+                return;
+            }
             context.state = MiningState.FINDING_BLOCK;
         } else {
             if (context.firstBreakTick) {
@@ -111,7 +142,18 @@ public class BreakingHelper {
                 if (context.listener != null) {
                     context.listener.onBlockMined(targetPos);
                 }
-                if (!advancePosition(minX, maxX, minY, minZ, maxZ)) return;
+                if (!advancePosition(minX, maxX, minY, minZ, maxZ)) {
+                    context.isMining = false;
+                    context.state = MiningState.IDLE;
+                    inputHelper.releaseAllKeys();
+                    if (client.player != null) {
+                        client.player.sendMessage(Text.literal("§a挖掘完成！"), false);
+                    }
+                    if (context.listener != null) {
+                        context.listener.onMineComplete();
+                    }
+                    return;
+                }
                 context.state = MiningState.FINDING_BLOCK;
                 logDebug("方块挖掘完成");
             }
@@ -173,7 +215,7 @@ public class BreakingHelper {
         return dx + dy + dz == 1;
     }
 
-    private boolean advancePosition(int minX, int maxX, int minY, int minZ, int maxZ) {
+    public boolean advancePosition(int minX, int maxX, int minY, int minZ, int maxZ) {
         context.currentX++;
         if (context.currentX > maxX) {
             context.currentX = minX;
@@ -182,12 +224,6 @@ public class BreakingHelper {
                 context.currentZ = minZ;
                 context.currentY--;
                 if (context.currentY < minY) {
-                    context.isMining = false;
-                    context.state = MiningState.IDLE;
-                    inputHelper.releaseAllKeys();
-                    if (context.listener != null) {
-                        context.listener.onMineComplete();
-                    }
                     return false;
                 }
             }

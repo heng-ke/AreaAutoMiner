@@ -24,7 +24,7 @@ public class MiningController {
         this.inputHelper = new InputHelper(context);
         this.cameraHelper = new CameraHelper(context, inputHelper);
         this.movementHelper = new MovementHelper(context, inputHelper, cameraHelper);
-        this.breakingHelper = new BreakingHelper(context, inputHelper, cameraHelper);
+        this.breakingHelper = new BreakingHelper(context, inputHelper);
     }
 
     public void setListener(MiningListener listener) {
@@ -130,7 +130,10 @@ public class MiningController {
 
         int airSkipCount = 0;
         while (client.world.getBlockState(targetPos).isAir()) {
-            if (!advancePosition(minX, maxX, minY, minZ, maxZ)) return;
+            if (!breakingHelper.advancePosition(minX, maxX, minY, minZ, maxZ)) {
+                stopMining();
+                return;
+            }
             targetPos = new BlockPos(context.currentX, context.currentY, context.currentZ);
             airSkipCount++;
             if (airSkipCount >= MiningConfig.MAX_AIR_SKIP_PER_TICK) {
@@ -153,26 +156,16 @@ public class MiningController {
         double verticalDistance = Math.abs(dy);
 
         boolean withinHorizontalRange = horizontalDistanceSquared <= MiningConfig.MAX_REACH_SQUARED;
-        boolean withinVerticalRange = verticalDistance <= 3.0;
+        boolean withinVerticalRange = verticalDistance <= MiningConfig.MAX_VERTICAL_DISTANCE;
 
         if (!withinHorizontalRange || !withinVerticalRange) {
-            context.walkTicks = 0;
-            context.stuckCounter = 0;
-            context.walkRetryCount = 0;
-            context.lastPlayerX = client.player.getX();
-            context.lastPlayerZ = client.player.getZ();
-            context.state = MiningState.WALKING_TO_BLOCK;
+            startWalkingToBlock(client);
             logDebug("超出挖掘范围，开始行走");
             return;
         }
 
         if (!breakingHelper.hasLineOfSight(client, targetPos)) {
-            context.walkTicks = 0;
-            context.stuckCounter = 0;
-            context.walkRetryCount = 0;
-            context.lastPlayerX = client.player.getX();
-            context.lastPlayerZ = client.player.getZ();
-            context.state = MiningState.WALKING_TO_BLOCK;
+            startWalkingToBlock(client);
             logDebug("无视线，开始行走");
             return;
         }
@@ -200,25 +193,15 @@ public class MiningController {
         logDebug("开始转向，需要转动: " + Math.round(Math.abs(yawDiff)) + "度，等待: " + context.waitTicks + "tick");
     }
 
-    private boolean advancePosition(int minX, int maxX, int minY, int minZ, int maxZ) {
-        context.currentX++;
-        if (context.currentX > maxX) {
-            context.currentX = minX;
-            context.currentZ++;
-            if (context.currentZ > maxZ) {
-                context.currentZ = minZ;
-                context.currentY--;
-                if (context.currentY < minY) {
-                    stopMining();
-                    if (context.listener != null) {
-                        context.listener.onMineComplete();
-                    }
-                    return false;
-                }
-            }
-        }
-        return true;
+    private void startWalkingToBlock(MinecraftClient client) {
+        context.walkTicks = 0;
+        context.stuckCounter = 0;
+        context.walkRetryCount = 0;
+        context.lastPlayerX = client.player.getX();
+        context.lastPlayerZ = client.player.getZ();
+        context.state = MiningState.WALKING_TO_BLOCK;
     }
+
 
     private void logDebug(String message) {
         if (MiningConfig.DEBUG) {
