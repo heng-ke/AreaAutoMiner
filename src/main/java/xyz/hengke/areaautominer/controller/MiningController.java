@@ -9,7 +9,9 @@ import xyz.hengke.areaautominer.helper.BreakingHelper;
 import xyz.hengke.areaautominer.helper.CameraHelper;
 import xyz.hengke.areaautominer.helper.InputHelper;
 import xyz.hengke.areaautominer.helper.MovementHelper;
+import xyz.hengke.areaautominer.config.MiningConfig;
 import xyz.hengke.areaautominer.listener.MiningListener;
+import xyz.hengke.areaautominer.model.MinerMod;
 import xyz.hengke.areaautominer.model.MiningState;
 import xyz.hengke.areaautominer.service.MiningCompletionService;
 import xyz.hengke.areaautominer.service.NotificationService;
@@ -51,11 +53,22 @@ public class MiningController {
         context.pos2 = p2;
         context.isMining = true;
 
-        int maxY = Math.max(p1.getY(), p2.getY());
+        context.minX = Math.min(p1.getX(), p2.getX());
+        context.maxX = Math.max(p1.getX(), p2.getX());
+        context.minY = Math.min(p1.getY(), p2.getY());
+        context.maxY = Math.max(p1.getY(), p2.getY());
+        context.minZ = Math.min(p1.getZ(), p2.getZ());
+        context.maxZ = Math.max(p1.getZ(), p2.getZ());
+        
+        MiningConfig miningConfig = MiningConfig.getInstance();
         int playerY = (int) Math.floor(client.player.getY());
-        context.currentY = Math.min(maxY, playerY + 1);
-        context.currentX = Math.min(p1.getX(), p2.getX());
-        context.currentZ = Math.min(p1.getZ(), p2.getZ());
+        if (miningConfig.getMinerMod() == MinerMod.FROM_TOP_DOWN) {
+            context.currentY = Math.min(context.maxY, playerY + 1);
+        } else {
+            context.currentY = context.minY;
+        }
+        context.currentX = context.minX;
+        context.currentZ = context.minZ;
         context.lastMinedPos = null;
         context.isAdjacentBlock = false;
         context.movingWait = false;
@@ -97,19 +110,13 @@ public class MiningController {
             return;
         }
 
-        int minX = Math.min(context.pos1.getX(), context.pos2.getX());
-        int maxX = Math.max(context.pos1.getX(), context.pos2.getX());
-        int minY = Math.min(context.pos1.getY(), context.pos2.getY());
-        int minZ = Math.min(context.pos1.getZ(), context.pos2.getZ());
-        int maxZ = Math.max(context.pos1.getZ(), context.pos2.getZ());
-
         switch (context.state) {
             case FINDING_BLOCK:
-                blockFinder.findNext(client, minX, maxX, minY, minZ, maxZ);
+                blockFinder.findNext();
                 break;
 
             case WALKING_TO_BLOCK:
-                movementHelper.walkToBlock(minX, maxX, minY, minZ, maxZ);
+                movementHelper.walkToBlock();
                 break;
 
             case FACING_BLOCK:
@@ -117,7 +124,7 @@ public class MiningController {
                 break;
 
             case BREAKING:
-                breakingHelper.startBreaking(minX, maxX, minY, minZ, maxZ);
+                breakingHelper.startBreaking();
                 break;
 
             case IDLE:

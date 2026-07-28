@@ -2,6 +2,7 @@ package xyz.hengke.areaautominer.helper;
 
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Direction;
 import xyz.hengke.areaautominer.config.MiningConfig;
 import xyz.hengke.areaautominer.context.MiningContext;
 import xyz.hengke.areaautominer.model.MiningState;
@@ -19,6 +20,7 @@ public class CameraHelper {
     }
 
     public void faceBlock() {
+        MiningConfig config = MiningConfig.getInstance();
         MinecraftClient client = context.client;
         inputHelper.releaseAllKeys();
 
@@ -75,7 +77,7 @@ public class CameraHelper {
 
             if (Math.abs(yawDiff) > 5.0F || pitchDiff > 5.0F) {
                 context.facingRetryCount++;
-                if (context.facingRetryCount > MiningConfig.MAX_FACING_RETRIES) {
+                if (context.facingRetryCount > config.getMaxFacingRetries()) {
                     notificationService.logDebug("转向重试次数过多，强制开始挖掘");
                     client.player.setYaw(context.targetYaw + (float)(Math.random() - 0.5) * finalNoise);
                     client.player.setPitch(context.targetPitch + (float)(Math.random() - 0.5) * (finalNoise * 0.75f));
@@ -98,16 +100,55 @@ public class CameraHelper {
     }
 
     public void calculateTargetLook(BlockPos targetPos) {
+        Direction visibleFace = SpatialHelper.getVisibleFace(context.client, targetPos);
+        if (visibleFace != null) {
+            calculateTargetLookToFace(targetPos, visibleFace);
+        } else {
+            calculateTargetLookToPoint(targetPos.getX() + 0.5, targetPos.getY() + 0.5, targetPos.getZ() + 0.5);
+        }
+    }
+
+    public void calculateTargetLookToFace(BlockPos targetPos, Direction face) {
+        double x = targetPos.getX() + 0.5;
+        double y = targetPos.getY() + 0.5;
+        double z = targetPos.getZ() + 0.5;
+
+        switch (face) {
+            case UP:
+                y = targetPos.getY() + 0.9;
+                break;
+            case DOWN:
+                y = targetPos.getY() + 0.1;
+                break;
+            case EAST:
+                x = targetPos.getX() + 0.9;
+                break;
+            case WEST:
+                x = targetPos.getX() + 0.1;
+                break;
+            case SOUTH:
+                z = targetPos.getZ() + 0.9;
+                break;
+            case NORTH:
+                z = targetPos.getZ() + 0.1;
+                break;
+        }
+
+        calculateTargetLookToPoint(x, y, z);
+    }
+
+    private void calculateTargetLookToPoint(double targetX, double targetY, double targetZ) {
         MinecraftClient client = context.client;
-        double lookDx = (targetPos.getX() + 0.5) - client.player.getX();
-        double lookDy = (targetPos.getY() + 0.5) - (client.player.getY() + client.player.getEyeHeight(client.player.getPose()));
-        double lookDz = (targetPos.getZ() + 0.5) - client.player.getZ();
+        double lookDx = targetX - client.player.getX();
+        double lookDy = targetY - (client.player.getY() + client.player.getEyeHeight(client.player.getPose()));
+        double lookDz = targetZ - client.player.getZ();
 
         context.targetYaw = (float) Math.atan2(lookDz, lookDx) * (180.0F / (float) Math.PI) - 90.0F;
         context.targetPitch = (float) -Math.atan2(lookDy, Math.sqrt(lookDx * lookDx + lookDz * lookDz)) * (180.0F / (float) Math.PI);
     }
 
     public int calculateDynamicWaitTicks(float yawDiff, float pitchDiff) {
+        MiningConfig config = MiningConfig.getInstance();
         float maxDiff = Math.max(Math.abs(yawDiff), pitchDiff);
 
         if (maxDiff < 15.0F) {
@@ -117,7 +158,7 @@ public class CameraHelper {
         } else if (maxDiff < 90.0F) {
             return 10;
         } else {
-            return MiningConfig.FACING_WAIT_TICKS;
+            return config.getFacingWaitTicks();
         }
     }
 

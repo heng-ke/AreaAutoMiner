@@ -25,7 +25,8 @@ public class MovementHelper {
         this.completionService = completionService;
     }
 
-    public void walkToBlock(int minX, int maxX, int minY, int minZ, int maxZ) {
+    public void walkToBlock() {
+        MiningConfig config = MiningConfig.getInstance();
         MinecraftClient client = context.client;
 
         if (context.jumpCooldown > 0) {
@@ -55,10 +56,10 @@ public class MovementHelper {
             context.lastPlayerZ = currentPlayerZ;
         }
 
-        if (context.walkTicks > MiningConfig.MAX_WALK_TICKS || context.stuckCounter > MiningConfig.MAX_STUCK_TICKS) {
+        if (context.walkTicks > config.getMaxWalkTicks() || context.stuckCounter > config.getMaxStuckTicks()) {
             if (horizontalLength < 1.5) {
                 inputHelper.releaseAllKeys();
-                context.waitTicks = MiningConfig.MOVE_WAIT_TICKS;
+                context.waitTicks = config.getMoveWaitTicks();
                 context.movingWait = true;
                 context.isAdjacentBlock = false;
                 cameraHelper.calculateTargetLook(targetPos);
@@ -70,7 +71,7 @@ public class MovementHelper {
                 return;
             }
             context.walkRetryCount++;
-            if (context.walkRetryCount <= MiningConfig.MAX_WALK_RETRIES) {
+            if (context.walkRetryCount <= config.getMaxWalkRetries()) {
                 notificationService.logDebug("行走超时或卡住，第 " + context.walkRetryCount + " 次重试");
                 inputHelper.releaseAllKeys();
                 context.walkTicks = -10;
@@ -79,13 +80,13 @@ public class MovementHelper {
                 context.lastPlayerZ = client.player.getZ();
                 return;
             }
-            notificationService.logDebug("行走超时或卡住，重试 " + MiningConfig.MAX_WALK_RETRIES + " 次后仍失败，跳过当前方块");
+            notificationService.logDebug("行走超时或卡住，重试 " + config.getMaxWalkRetries() + " 次后仍失败，跳过当前方块");
             inputHelper.releaseAllKeys();
             context.walkRetryCount = 0;
             completionService.onBlockSkipped(targetPos);
             context.walkTicks = 0;
             context.stuckCounter = 0;
-            if (!areaIterator.advancePosition(minX, maxX, minY, minZ, maxZ)) {
+            if (!areaIterator.advancePosition()) {
                 completionService.completeMining();
                 return;
             }
@@ -93,7 +94,7 @@ public class MovementHelper {
             return;
         }
 
-        if (horizontalLength < MiningConfig.ARRIVE_THRESHOLD) {
+        if (horizontalLength < config.getArriveThreshold()) {
             if (targetPos.getY() > client.player.getY()) {
                 BlockPos targetTopPos = targetPos.up();
                 BlockPos targetAboveTopPos = targetPos.up(2);
@@ -110,7 +111,7 @@ public class MovementHelper {
                 }
             }
             inputHelper.releaseAllKeys();
-            context.waitTicks = MiningConfig.MOVE_WAIT_TICKS;
+            context.waitTicks = config.getMoveWaitTicks();
             context.movingWait = true;
             context.isAdjacentBlock = false;
             cameraHelper.calculateTargetLook(targetPos);
@@ -126,15 +127,15 @@ public class MovementHelper {
         float smoothedYaw = cameraHelper.smoothYawTowards(client.player.getYaw(), walkYaw, 15.0f);
         client.player.setYaw(smoothedYaw);
 
-        boolean needJump = checkObstacleInFront(client, dx, dz) && client.player.isOnGround() && context.jumpCooldown == 0;
-        boolean wouldFall = targetPos.getY() <= client.player.getY() && checkFallDanger(client, dx, dz);
+        boolean needJump = checkObstacleInFront(dx, dz) && client.player.isOnGround() && context.jumpCooldown == 0;
+        boolean wouldFall = targetPos.getY() <= client.player.getY() && checkFallDanger(dx, dz);
 
         if (wouldFall && !needJump) {
             inputHelper.releaseAllKeys();
             completionService.onBlockSkipped(targetPos);
             context.walkTicks = 0;
             context.stuckCounter = 0;
-            if (!areaIterator.advancePosition(minX, maxX, minY, minZ, maxZ)) {
+            if (!areaIterator.advancePosition()) {
                 completionService.completeMining();
                 return;
             }
@@ -153,7 +154,8 @@ public class MovementHelper {
         }
     }
 
-    public boolean checkObstacleInFront(MinecraftClient client, double dx, double dz) {
+    public boolean checkObstacleInFront(double dx, double dz) {
+        MinecraftClient client = context.client;
         double length = Math.sqrt(dx * dx + dz * dz);
         if (length < 0.001) return false;
 
@@ -170,6 +172,12 @@ public class MovementHelper {
                     (int) Math.floor(client.player.getY()),
                     (int) Math.floor(client.player.getZ() + stepZ * dist - stepX * offset)
                 );
+
+                if (footPos.getX() < context.minX || footPos.getX() > context.maxX || 
+                    footPos.getZ() < context.minZ || footPos.getZ() > context.maxZ) {
+                    continue;
+                }
+
                 BlockPos headPos = footPos.up();
                 BlockPos aboveHeadPos = footPos.up(2);
                 BlockPos highPos = footPos.up(3);
@@ -187,7 +195,9 @@ public class MovementHelper {
         return false;
     }
 
-    public boolean checkFallDanger(MinecraftClient client, double dx, double dz) {
+    public boolean checkFallDanger(double dx, double dz) {
+        MinecraftClient client = context.client;
+        MiningConfig config = MiningConfig.getInstance();
         double length = Math.sqrt(dx * dx + dz * dz);
         if (length < 0.001) return false;
 
@@ -200,7 +210,7 @@ public class MovementHelper {
             (int) Math.floor(client.player.getZ())
         );
 
-        int playerGroundY = findGroundY(client, playerPos);
+        int playerGroundY = findGroundY(playerPos);
 
         for (int dist = 1; dist <= 2; dist++) {
             BlockPos frontPos = new BlockPos(
@@ -209,17 +219,23 @@ public class MovementHelper {
                 (int) Math.floor(client.player.getZ() + stepZ * dist)
             );
 
-            int frontGroundY = findGroundY(client, frontPos);
+            if (frontPos.getX() < context.minX || frontPos.getX() > context.maxX || 
+                frontPos.getZ() < context.minZ || frontPos.getZ() > context.maxZ) {
+                continue;
+            }
+
+            int frontGroundY = findGroundY(frontPos);
 
             int heightDiff = playerGroundY - frontGroundY;
-            if (heightDiff >= MiningConfig.FALL_DANGER_THRESHOLD) {
+            if (heightDiff >= config.getFallDangerThreshold()) {
                 return true;
             }
         }
         return false;
     }
 
-    public int findGroundY(MinecraftClient client, BlockPos pos) {
+    public int findGroundY(BlockPos pos) {
+        MinecraftClient client = context.client;
         for (int y = pos.getY(); y >= pos.getY() - 6; y--) {
             BlockPos checkPos = new BlockPos(pos.getX(), y, pos.getZ());
             if (!client.world.getBlockState(checkPos).isAir()) {

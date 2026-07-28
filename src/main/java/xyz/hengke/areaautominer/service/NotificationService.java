@@ -18,7 +18,7 @@ public class NotificationService {
     }
 
     public void logDebug(String message) {
-        if (MiningConfig.DEBUG) {
+        if (MiningConfig.getInstance().isDebug()) {
             if (context.client.player != null) {
                 context.client.player.sendMessage(Text.literal("§7[DEBUG] " + message), false);
             }

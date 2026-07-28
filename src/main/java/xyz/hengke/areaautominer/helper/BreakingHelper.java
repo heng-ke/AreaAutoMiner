@@ -22,12 +22,13 @@ public class BreakingHelper {
         this.completionService = completionService;
     }
 
-    public void startBreaking(int minX, int maxX, int minY, int minZ, int maxZ) {
+    public void startBreaking() {
+        MiningConfig config = MiningConfig.getInstance();
         MinecraftClient client = context.client;
         BlockPos targetPos = areaIterator.getCurrentPos();
 
         if (client.world.getBlockState(targetPos).isAir()) {
-            if (!areaIterator.advancePosition(minX, maxX, minY, minZ, maxZ)) {
+            if (!areaIterator.advancePosition()) {
                 completionService.completeMining();
                 return;
             }
@@ -44,11 +45,11 @@ public class BreakingHelper {
         double horizontalDistanceSquared = SpatialHelper.calculateHorizontalDistanceSquared(playerX, playerZ, targetX, targetZ);
         double verticalDistance = Math.abs(playerY - targetY);
 
-        boolean withinHorizontalRange = horizontalDistanceSquared <= MiningConfig.MAX_REACH_SQUARED;
-        boolean withinVerticalRange = verticalDistance <= MiningConfig.MAX_VERTICAL_DISTANCE;
+        boolean withinHorizontalRange = horizontalDistanceSquared <= config.getMaxReachSquared();
+        boolean withinVerticalRange = verticalDistance <= config.getMaxVerticalDistance();
 
-        if (!withinHorizontalRange || !withinVerticalRange || !SpatialHelper.hasLineOfSight(client, targetPos)) {
-            startWalkingToBlock(client);
+        if (!withinHorizontalRange || !withinVerticalRange || !SpatialHelper.hasLineOfSightToAnyFace(client, targetPos)) {
+            startWalkingToBlock();
             notificationService.logDebug("挖掘时超出范围或无视线，重新行走");
             return;
         }
@@ -58,7 +59,7 @@ public class BreakingHelper {
         float pitchDiff = Math.abs(context.targetPitch - client.player.getPitch());
 
         if (Math.abs(yawDiff) > 15.0F || pitchDiff > 15.0F) {
-            context.waitTicks = MiningConfig.SHORT_FACING_WAIT_TICKS;
+            context.waitTicks = config.getShortFacingWaitTicks();
             context.isAdjacentBlock = true;
             context.state = MiningState.FACING_BLOCK;
             notificationService.logDebug("挖掘时视角偏移过大，重新转向");
@@ -66,10 +67,10 @@ public class BreakingHelper {
         }
 
         context.breakTicks++;
-        if (context.breakTicks > MiningConfig.MAX_BREAK_TICKS) {
+        if (context.breakTicks > config.getMaxBreakTicks()) {
             completionService.onBlockSkipped(targetPos);
             context.breakTicks = 0;
-            if (!areaIterator.advancePosition(minX, maxX, minY, minZ, maxZ)) {
+            if (!areaIterator.advancePosition()) {
                 completionService.completeMining();
                 return;
             }
@@ -84,7 +85,7 @@ public class BreakingHelper {
             client.interactionManager.breakBlock(targetPos);
             client.player.swingHand(net.minecraft.util.Hand.MAIN_HAND);
             completionService.onBlockMined(targetPos);
-            if (!areaIterator.advancePosition(minX, maxX, minY, minZ, maxZ)) {
+            if (!areaIterator.advancePosition()) {
                 completionService.completeMining();
                 return;
             }
@@ -100,19 +101,20 @@ public class BreakingHelper {
             client.player.swingHand(net.minecraft.util.Hand.MAIN_HAND);
 
             if (client.world.getBlockState(targetPos).isAir()) {
-                completionService.onBlockMined(targetPos);
-                context.breakTicks = 0;
-                if (!areaIterator.advancePosition(minX, maxX, minY, minZ, maxZ)) {
-                    completionService.completeMining();
-                    return;
+                    completionService.onBlockMined(targetPos);
+                    context.breakTicks = 0;
+                    if (!areaIterator.advancePosition()) {
+                        completionService.completeMining();
+                        return;
+                    }
+                    context.state = MiningState.FINDING_BLOCK;
+                    notificationService.logDebug("方块挖掘完成");
                 }
-                context.state = MiningState.FINDING_BLOCK;
-                notificationService.logDebug("方块挖掘完成");
-            }
         }
     }
 
-    private void startWalkingToBlock(MinecraftClient client) {
+    private void startWalkingToBlock() {
+        MinecraftClient client = context.client;
         context.walkTicks = 0;
         context.stuckCounter = 0;
         context.walkRetryCount = 0;

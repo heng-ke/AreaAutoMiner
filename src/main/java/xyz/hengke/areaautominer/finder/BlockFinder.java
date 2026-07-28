@@ -26,18 +26,20 @@ public class BlockFinder {
         this.completionService = completionService;
     }
 
-    public void findNext(MinecraftClient client, int minX, int maxX, int minY, int minZ, int maxZ) {
+    public void findNext() {
+        MiningConfig config = MiningConfig.getInstance();
+        MinecraftClient client = context.client;
         BlockPos targetPos = areaIterator.getCurrentPos();
 
         int airSkipCount = 0;
         while (client.world.getBlockState(targetPos).isAir()) {
-            if (!areaIterator.advancePosition(minX, maxX, minY, minZ, maxZ)) {
+            if (!areaIterator.advancePosition()) {
                 completionService.completeMining();
                 return;
             }
             targetPos = areaIterator.getCurrentPos();
             airSkipCount++;
-            if (airSkipCount >= MiningConfig.MAX_AIR_SKIP_PER_TICK) {
+            if (airSkipCount >= config.getMaxAirSkipPerTick()) {
                 return;
             }
         }
@@ -53,17 +55,17 @@ public class BlockFinder {
         double horizontalDistanceSquared = SpatialHelper.calculateHorizontalDistanceSquared(playerX, playerZ, targetX, targetZ);
         double verticalDistance = Math.abs(playerY - targetY);
 
-        boolean withinHorizontalRange = horizontalDistanceSquared <= MiningConfig.MAX_REACH_SQUARED;
-        boolean withinVerticalRange = verticalDistance <= MiningConfig.MAX_VERTICAL_DISTANCE;
+        boolean withinHorizontalRange = horizontalDistanceSquared <= config.getMaxReachSquared();
+        boolean withinVerticalRange = verticalDistance <= config.getMaxVerticalDistance();
 
         if (!withinHorizontalRange || !withinVerticalRange) {
-            startWalkingToBlock(client);
+            startWalkingToBlock();
             notificationService.logDebug("超出挖掘范围，开始行走");
             return;
         }
 
-        if (!SpatialHelper.hasLineOfSight(client, targetPos)) {
-            startWalkingToBlock(client);
+        if (!SpatialHelper.hasLineOfSightToAnyFace(client, targetPos)) {
+            startWalkingToBlock();
             notificationService.logDebug("无视线，开始行走");
             return;
         }
@@ -89,7 +91,8 @@ public class BlockFinder {
         notificationService.logDebug("开始转向，需要转动: " + Math.round(Math.abs(yawDiff)) + "度，等待: " + context.waitTicks + "tick");
     }
 
-    private void startWalkingToBlock(MinecraftClient client) {
+    private void startWalkingToBlock() {
+        MinecraftClient client = context.client;
         context.walkTicks = 0;
         context.stuckCounter = 0;
         context.walkRetryCount = 0;

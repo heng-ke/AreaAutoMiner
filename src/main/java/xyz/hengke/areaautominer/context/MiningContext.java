@@ -11,6 +11,8 @@ public class MiningContext {
     
     public boolean isMining = false;
     public BlockPos pos1 = null, pos2 = null;
+    public int minX = 0, minY = 0, minZ = 0;
+    public int maxX = 0, maxY = 0, maxZ = 0;
     public int currentY = 0;
     public int currentX = 0;
     public int currentZ = 0;

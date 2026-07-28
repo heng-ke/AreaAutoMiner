@@ -68,6 +68,73 @@ public class SpatialHelper {
         return hitResult.getBlockPos().equals(targetPos);
     }
 
+    public static boolean hasLineOfSightToAnyFace(MinecraftClient client, BlockPos targetPos) {
+        return getVisibleFace(client, targetPos) != null;
+    }
+
+    public static Direction getVisibleFace(MinecraftClient client, BlockPos targetPos) {
+        Vec3d eyePos = new Vec3d(
+                client.player.getX(),
+                client.player.getY() + client.player.getEyeHeight(client.player.getPose()),
+                client.player.getZ()
+        );
+
+        Direction[] faces = {Direction.UP, Direction.DOWN, Direction.EAST, Direction.WEST, Direction.SOUTH, Direction.NORTH};
+
+        for (Direction face : faces) {
+            Vec3d faceCenter = getFaceCenter(targetPos, face);
+
+            net.minecraft.util.hit.BlockHitResult hitResult = client.world.raycast(
+                    new RaycastContext(
+                            eyePos,
+                            faceCenter,
+                            RaycastContext.ShapeType.OUTLINE,
+                            RaycastContext.FluidHandling.NONE,
+                            client.player
+                    )
+            );
+
+            if (hitResult.getType() == net.minecraft.util.hit.HitResult.Type.MISS) {
+                return face;
+            }
+
+            if (hitResult.getBlockPos().equals(targetPos) && hitResult.getSide() == face) {
+                return face;
+            }
+        }
+
+        return null;
+    }
+
+    private static Vec3d getFaceCenter(BlockPos pos, Direction face) {
+        double x = pos.getX() + 0.5;
+        double y = pos.getY() + 0.5;
+        double z = pos.getZ() + 0.5;
+
+        switch (face) {
+            case UP:
+                y = pos.getY() + 1.0;
+                break;
+            case DOWN:
+                y = pos.getY() + 0.0;
+                break;
+            case EAST:
+                x = pos.getX() + 1.0;
+                break;
+            case WEST:
+                x = pos.getX() + 0.0;
+                break;
+            case SOUTH:
+                z = pos.getZ() + 1.0;
+                break;
+            case NORTH:
+                z = pos.getZ() + 0.0;
+                break;
+        }
+
+        return new Vec3d(x, y, z);
+    }
+
     public static boolean isAdjacentToLast(MiningContext context, BlockPos pos) {
         if (context.lastMinedPos == null) return false;
         int dx = Math.abs(pos.getX() - context.lastMinedPos.getX());
