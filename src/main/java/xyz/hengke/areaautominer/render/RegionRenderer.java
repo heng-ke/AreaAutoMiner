@@ -11,6 +11,8 @@ import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
 
 public class RegionRenderer {
+    private static final float MAX_RENDER_DISTANCE = 256.0f;
+
     public static void renderRegion(WorldRenderContext context, BlockPos pos1, BlockPos pos2) {
         if (pos1 == null || pos2 == null) return;
         if (context.consumers() == null) return;
@@ -18,6 +20,15 @@ public class RegionRenderer {
         MinecraftClient client = MinecraftClient.getInstance();
         Camera camera = client.gameRenderer.getCamera();
         Vec3d cameraPos = camera.getCameraPos();
+
+        double centerX = (double) (pos1.getX() + pos2.getX()) / 2.0;
+        double centerY = (double) (pos1.getY() + pos2.getY()) / 2.0;
+        double centerZ = (double) (pos1.getZ() + pos2.getZ()) / 2.0;
+
+        double distanceSquared = cameraPos.squaredDistanceTo(centerX, centerY, centerZ);
+        if (distanceSquared > MAX_RENDER_DISTANCE * MAX_RENDER_DISTANCE) {
+            return;
+        }
 
         MatrixStack matrices = context.matrices();
         matrices.push();

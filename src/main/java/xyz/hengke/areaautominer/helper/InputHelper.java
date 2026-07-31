@@ -16,7 +16,7 @@ public class InputHelper {
     }
 
     public void releaseAllKeys() {
-        MinecraftClient client = context.client;
+        MinecraftClient client = context.getClient();
         if (client.options != null) {
             setKeyPressed(client.options.forwardKey, false);
             setKeyPressed(client.options.jumpKey, false);

@@ -136,10 +136,10 @@ public class SpatialHelper {
     }
 
     public static boolean isAdjacentToLast(MiningContext context, BlockPos pos) {
-        if (context.lastMinedPos == null) return false;
-        int dx = Math.abs(pos.getX() - context.lastMinedPos.getX());
-        int dy = Math.abs(pos.getY() - context.lastMinedPos.getY());
-        int dz = Math.abs(pos.getZ() - context.lastMinedPos.getZ());
+        if (context.getLastMinedPos() == null) return false;
+        int dx = Math.abs(pos.getX() - context.getLastMinedPos().getX());
+        int dy = Math.abs(pos.getY() - context.getLastMinedPos().getY());
+        int dz = Math.abs(pos.getZ() - context.getLastMinedPos().getZ());
         return dx + dy + dz == 1;
     }
 }

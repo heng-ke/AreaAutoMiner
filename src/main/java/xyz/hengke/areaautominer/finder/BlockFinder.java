@@ -12,6 +12,8 @@ import xyz.hengke.areaautominer.service.MiningCompletionService;
 import xyz.hengke.areaautominer.service.NotificationService;
 
 public class BlockFinder {
+    private static final float FACING_THRESHOLD_DEGREES = 5.0F;
+
     private final MiningContext context;
     private final AreaIterator areaIterator;
     private final CameraHelper cameraHelper;
@@ -28,7 +30,7 @@ public class BlockFinder {
 
     public void findNext() {
         MiningConfig config = MiningConfig.getInstance();
-        MinecraftClient client = context.client;
+        MinecraftClient client = context.getClient();
         BlockPos targetPos = areaIterator.getCurrentPos();
 
         int airSkipCount = 0;
@@ -44,9 +46,9 @@ public class BlockFinder {
             }
         }
 
-        double targetX = context.currentX + 0.5;
-        double targetY = context.currentY + 0.5;
-        double targetZ = context.currentZ + 0.5;
+        double targetX = context.getCurrentX() + 0.5;
+        double targetY = context.getCurrentY() + 0.5;
+        double targetZ = context.getCurrentZ() + 0.5;
 
         double playerX = client.player.getX();
         double playerY = client.player.getY() + client.player.getEyeHeight(client.player.getPose());
@@ -59,45 +61,36 @@ public class BlockFinder {
         boolean withinVerticalRange = verticalDistance <= config.getMaxVerticalDistance();
 
         if (!withinHorizontalRange || !withinVerticalRange) {
-            startWalkingToBlock();
+            context.startWalkingToBlock();
             notificationService.logDebug("超出挖掘范围，开始行走");
             return;
         }
 
         if (!SpatialHelper.hasLineOfSightToAnyFace(client, targetPos)) {
-            startWalkingToBlock();
+            context.startWalkingToBlock();
             notificationService.logDebug("无视线，开始行走");
             return;
         }
 
         cameraHelper.calculateTargetLook(targetPos);
 
-        context.isAdjacentBlock = SpatialHelper.isAdjacentToLast(context, targetPos);
+        context.setAdjacentBlock(SpatialHelper.isAdjacentToLast(context, targetPos));
 
         float currentYaw = client.player.getYaw();
-        float yawDiff = SpatialHelper.normalizeYawDiff(context.targetYaw - currentYaw);
-        float pitchDiff = Math.abs(context.targetPitch - client.player.getPitch());
+        float yawDiff = SpatialHelper.normalizeYawDiff(context.getTargetYaw() - currentYaw);
+        float pitchDiff = Math.abs(context.getTargetPitch() - client.player.getPitch());
 
-        if (Math.abs(yawDiff) < 5.0F && pitchDiff < 5.0F) {
-            context.firstBreakTick = true;
-            context.state = MiningState.BREAKING;
+        if (Math.abs(yawDiff) < FACING_THRESHOLD_DEGREES && pitchDiff < FACING_THRESHOLD_DEGREES) {
+            context.setFirstBreakTick(true);
+            context.setState(MiningState.BREAKING);
             notificationService.logDebug("已对准，直接挖掘");
             return;
         }
 
-        context.waitTicks = cameraHelper.calculateDynamicWaitTicks(yawDiff, pitchDiff);
-        context.facingRetryCount = 0;
-        context.state = MiningState.FACING_BLOCK;
-        notificationService.logDebug("开始转向，需要转动: " + Math.round(Math.abs(yawDiff)) + "度，等待: " + context.waitTicks + "tick");
-    }
-
-    private void startWalkingToBlock() {
-        MinecraftClient client = context.client;
-        context.walkTicks = 0;
-        context.stuckCounter = 0;
-        context.walkRetryCount = 0;
-        context.lastPlayerX = client.player.getX();
-        context.lastPlayerZ = client.player.getZ();
-        context.state = MiningState.WALKING_TO_BLOCK;
+        context.setWaitTicks(cameraHelper.calculateDynamicWaitTicks(yawDiff, pitchDiff));
+        context.setInitialWaitTicks(context.getWaitTicks());
+        context.setFacingRetryCount(0);
+        context.setState(MiningState.FACING_BLOCK);
+        notificationService.logDebug("开始转向，需要转动: " + Math.round(Math.abs(yawDiff)) + "度，等待: " + context.getWaitTicks() + "tick");
     }
 }

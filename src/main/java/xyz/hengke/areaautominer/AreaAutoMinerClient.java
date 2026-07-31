@@ -5,7 +5,9 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderContext;
 import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
 import net.fabricmc.fabric.api.event.player.UseItemCallback;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.screen.GameMenuScreen;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
@@ -22,9 +24,15 @@ import xyz.hengke.areaautominer.render.RegionRenderer;
 
 public class AreaAutoMinerClient implements ClientModInitializer {
     private BlockPos pos1 = null, pos2 = null;
-    private boolean kPressedLastTick = false; // 用于检测 K 键是否按下
-    private MiningController miningController; // 挖矿控制器
-    private boolean swordUsedThisTick = false; // 用于防止右键重复触发
+    private boolean kPressedLastTick = false;
+    private MiningController miningController;
+    private boolean swordUsedThisTick = false;
+    private enum LifeCycleState {
+        ALIVE,
+        DEAD,
+        PAUSED
+    }
+    private LifeCycleState lifeCycleState = LifeCycleState.ALIVE;
 
     @Override
     public void onInitializeClient() {
@@ -40,39 +48,61 @@ public class AreaAutoMinerClient implements ClientModInitializer {
 
             @Override
             public void onBlockSkipped(BlockPos pos) {
-                // 已在 AreaMiner 中处理
             }
 
             @Override
             public void onBlockMined(BlockPos pos) {
-                // 可选：添加挖掘完成的视觉反馈
             }
 
             @Override
             public void onStartMining(BlockPos pos1, BlockPos pos2) {
-                // 可选：添加开始挖掘的视觉反馈
             }
 
             @Override
             public void onStopMining() {
-                // 可选：添加停止挖掘的视觉反馈
             }
         });
 
-        ClientTickEvents.END_CLIENT_TICK.register(this::onClientTick);// 注册客户端 tick 事件
-        UseItemCallback.EVENT.register(this::onSwordUse);// 注册物品使用事件
-        WorldRenderEvents.AFTER_ENTITIES.register(this::onRenderWorld);// 注册世界渲染事件
+        ClientTickEvents.END_CLIENT_TICK.register(this::onClientTick);
+        UseItemCallback.EVENT.register(this::onSwordUse);
+        WorldRenderEvents.AFTER_ENTITIES.register(this::onRenderWorld);
+
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
+            if (miningController.isMining()) {
+                miningController.stopMining();
+            }
+        });
     }
 
     private void onClientTick(MinecraftClient client) {
-        boolean kPressed = GLFW.glfwGetKey(client.getWindow().getHandle(), GLFW.GLFW_KEY_K) == GLFW.GLFW_PRESS;// 检测 K 键是否按下
-        if (kPressed && !kPressedLastTick) {// 检测 K 键是否按下且与上一 tick 不同, 避免重复触发
-            if (client.player != null) {
-                if (!miningController.isMining()) {
-                    miningController.startMining(pos1, pos2);
-                } else {
-                    miningController.stopMining();
-                }
+        if (client.player == null) return;
+
+        if (client.player.isDead()) {
+            if (lifeCycleState != LifeCycleState.DEAD && miningController.isMining()) {
+                miningController.stopMining();
+                client.player.sendMessage(Text.literal("§c玩家死亡，停止挖掘"), false);
+            }
+            lifeCycleState = LifeCycleState.DEAD;
+            return;
+        }
+
+        boolean isPaused = client.currentScreen != null && client.currentScreen instanceof GameMenuScreen;
+        if (isPaused && miningController.isMining()) {
+            if (lifeCycleState != LifeCycleState.PAUSED) {
+                miningController.stopMining();
+                client.player.sendMessage(Text.literal("§c游戏暂停，停止挖掘"), false);
+            }
+            lifeCycleState = LifeCycleState.PAUSED;
+        } else if (!isPaused && client.player.isAlive()) {
+            lifeCycleState = LifeCycleState.ALIVE;
+        }
+
+        boolean kPressed = GLFW.glfwGetKey(client.getWindow().getHandle(), GLFW.GLFW_KEY_K) == GLFW.GLFW_PRESS;
+        if (kPressed && !kPressedLastTick) {
+            if (!miningController.isMining()) {
+                miningController.startMining(pos1, pos2);
+            } else {
+                miningController.stopMining();
             }
         }
         kPressedLastTick = kPressed;
@@ -95,7 +125,8 @@ public class AreaAutoMinerClient implements ClientModInitializer {
                 stack.getItem() != Items.STONE_SWORD &&
                 stack.getItem() != Items.IRON_SWORD &&
                 stack.getItem() != Items.GOLDEN_SWORD &&
-                stack.getItem() != Items.DIAMOND_SWORD) return ActionResult.PASS;
+                stack.getItem() != Items.DIAMOND_SWORD &&
+                stack.getItem() != Items.NETHERITE_SWORD) return ActionResult.PASS;
 
         BlockHitResult hit = (BlockHitResult) player.raycast(5.0, 0.0f, false);
         if (hit == null) return ActionResult.PASS;

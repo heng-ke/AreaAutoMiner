@@ -1,6 +1,8 @@
 package xyz.hengke.areaautominer.helper;
 
+import net.minecraft.block.Blocks;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.item.ItemStack;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.GameMode;
 import xyz.hengke.areaautominer.config.MiningConfig;
@@ -14,31 +16,52 @@ public class BreakingHelper {
     private final AreaIterator areaIterator;
     private final NotificationService notificationService;
     private final MiningCompletionService completionService;
+    private final InputHelper inputHelper;
 
-    public BreakingHelper(MiningContext context, AreaIterator areaIterator, NotificationService notificationService, MiningCompletionService completionService) {
+    public BreakingHelper(MiningContext context, AreaIterator areaIterator, NotificationService notificationService, MiningCompletionService completionService, InputHelper inputHelper) {
         this.context = context;
         this.areaIterator = areaIterator;
         this.notificationService = notificationService;
         this.completionService = completionService;
+        this.inputHelper = inputHelper;
     }
+
+    // 挖掘时视角重对准阈值（度），偏差超过此值则中断挖掘重新转向
+    private static final float FACING_RE_THRESHOLD_DEGREES = 15.0F;
 
     public void startBreaking() {
         MiningConfig config = MiningConfig.getInstance();
-        MinecraftClient client = context.client;
+        MinecraftClient client = context.getClient();
         BlockPos targetPos = areaIterator.getCurrentPos();
+
+        BlockPos playerPos = new BlockPos(
+            (int) Math.floor(client.player.getX()),
+            (int) Math.floor(client.player.getY()),
+            (int) Math.floor(client.player.getZ())
+        );
+        if (client.world.getBlockState(playerPos.down()).isOf(Blocks.LAVA)) {
+            notificationService.sendMessage("§c检测到玩家脚下是岩浆源块，停止挖掘");
+            completionService.onBlockSkipped(targetPos);
+            if (!areaIterator.advancePosition()) {
+                completionService.completeMining();
+                return;
+            }
+            context.setState(MiningState.FINDING_BLOCK);
+            return;
+        }
 
         if (client.world.getBlockState(targetPos).isAir()) {
             if (!areaIterator.advancePosition()) {
                 completionService.completeMining();
                 return;
             }
-            context.state = MiningState.FINDING_BLOCK;
+            context.setState(MiningState.FINDING_BLOCK);
             return;
         }
 
-        double targetX = context.currentX + 0.5;
-        double targetY = context.currentY + 0.5;
-        double targetZ = context.currentZ + 0.5;
+        double targetX = context.getCurrentX() + 0.5;
+        double targetY = context.getCurrentY() + 0.5;
+        double targetZ = context.getCurrentZ() + 0.5;
         double playerX = client.player.getX();
         double playerY = client.player.getY() + client.player.getEyeHeight(client.player.getPose());
         double playerZ = client.player.getZ();
@@ -49,36 +72,37 @@ public class BreakingHelper {
         boolean withinVerticalRange = verticalDistance <= config.getMaxVerticalDistance();
 
         if (!withinHorizontalRange || !withinVerticalRange || !SpatialHelper.hasLineOfSightToAnyFace(client, targetPos)) {
-            startWalkingToBlock();
+            context.startWalkingToBlock();
             notificationService.logDebug("挖掘时超出范围或无视线，重新行走");
             return;
         }
 
         float currentYaw = client.player.getYaw();
-        float yawDiff = SpatialHelper.normalizeYawDiff(context.targetYaw - currentYaw);
-        float pitchDiff = Math.abs(context.targetPitch - client.player.getPitch());
+        float yawDiff = SpatialHelper.normalizeYawDiff(context.getTargetYaw() - currentYaw);
+        float pitchDiff = Math.abs(context.getTargetPitch() - client.player.getPitch());
 
-        if (Math.abs(yawDiff) > 15.0F || pitchDiff > 15.0F) {
-            context.waitTicks = config.getShortFacingWaitTicks();
-            context.isAdjacentBlock = true;
-            context.state = MiningState.FACING_BLOCK;
+        if (Math.abs(yawDiff) > FACING_RE_THRESHOLD_DEGREES || pitchDiff > FACING_RE_THRESHOLD_DEGREES) {
+            context.setWaitTicks(config.getShortFacingWaitTicks());
+            context.setInitialWaitTicks(context.getWaitTicks());
+            context.setAdjacentBlock(true);
+            context.setState(MiningState.FACING_BLOCK);
             notificationService.logDebug("挖掘时视角偏移过大，重新转向");
             return;
         }
 
-        context.breakTicks++;
-        if (context.breakTicks > config.getMaxBreakTicks()) {
+        context.setBreakTicks(context.getBreakTicks() + 1);
+        if (context.getBreakTicks() > config.getMaxBreakTicks()) {
             completionService.onBlockSkipped(targetPos);
-            context.breakTicks = 0;
+            context.setBreakTicks(0);
+            context.setFirstBreakTick(true);
             if (!areaIterator.advancePosition()) {
                 completionService.completeMining();
                 return;
             }
-            context.state = MiningState.FINDING_BLOCK;
+            context.setState(MiningState.FINDING_BLOCK);
             return;
         }
 
-        var direction = SpatialHelper.calculateDirection(client, targetPos);
         GameMode gameMode = client.interactionManager.getCurrentGameMode();
 
         if (gameMode == GameMode.CREATIVE) {
@@ -89,37 +113,43 @@ public class BreakingHelper {
                 completionService.completeMining();
                 return;
             }
-            context.state = MiningState.FINDING_BLOCK;
+            context.setState(MiningState.FINDING_BLOCK);
         } else {
-            if (context.firstBreakTick) {
+            ItemStack toolStack = context.getClient().player.getStackInHand(net.minecraft.util.Hand.MAIN_HAND);
+            if (toolStack.isDamageable() && toolStack.getMaxDamage() > 0) {
+                int currentDurability = toolStack.getMaxDamage() - toolStack.getDamage();
+                if (currentDurability < MiningConfig.getInstance().getMinToolDurability()) {
+                    notificationService.sendMessage("§c工具耐久不足（剩余 " + currentDurability + " 点），暂停挖掘");
+                    inputHelper.releaseAllKeys();
+                    context.setState(MiningState.IDLE);
+                    return;
+                }
+            }
+
+            var direction = SpatialHelper.calculateDirection(client, targetPos);
+
+            if (context.isFirstBreakTick()) {
                 client.interactionManager.attackBlock(targetPos, direction);
                 client.player.swingHand(net.minecraft.util.Hand.MAIN_HAND);
-                context.firstBreakTick = false;
+                context.setFirstBreakTick(false);
             }
 
             client.interactionManager.updateBlockBreakingProgress(targetPos, direction);
-            client.player.swingHand(net.minecraft.util.Hand.MAIN_HAND);
+
+            if (context.getBreakTicks() % 6 == 0) {
+                client.player.swingHand(net.minecraft.util.Hand.MAIN_HAND);
+            }
 
             if (client.world.getBlockState(targetPos).isAir()) {
-                    completionService.onBlockMined(targetPos);
-                    context.breakTicks = 0;
-                    if (!areaIterator.advancePosition()) {
-                        completionService.completeMining();
-                        return;
-                    }
-                    context.state = MiningState.FINDING_BLOCK;
-                    notificationService.logDebug("方块挖掘完成");
+                completionService.onBlockMined(targetPos);
+                context.setBreakTicks(0);
+                if (!areaIterator.advancePosition()) {
+                    completionService.completeMining();
+                    return;
                 }
+                context.setState(MiningState.FINDING_BLOCK);
+                notificationService.logDebug("方块挖掘完成");
+            }
         }
-    }
-
-    private void startWalkingToBlock() {
-        MinecraftClient client = context.client;
-        context.walkTicks = 0;
-        context.stuckCounter = 0;
-        context.walkRetryCount = 0;
-        context.lastPlayerX = client.player.getX();
-        context.lastPlayerZ = client.player.getZ();
-        context.state = MiningState.WALKING_TO_BLOCK;
     }
 }

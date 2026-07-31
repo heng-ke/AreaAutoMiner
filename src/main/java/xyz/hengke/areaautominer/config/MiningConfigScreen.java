@@ -26,7 +26,7 @@ public class MiningConfigScreen {
                 .setDefaultValue(15)
                 .setMin(1)
                 .setMax(100)
-                .setSaveConsumer(value -> config.facingWaitTicks = value)
+                .setSaveConsumer(value -> config.setFacingWaitTicks(value))
                 .build());
 
         timingCategory.addEntry(entryBuilder.startIntField(Text.literal("短面向等待 ticks"), config.getShortFacingWaitTicks())
@@ -34,7 +34,7 @@ public class MiningConfigScreen {
                 .setDefaultValue(4)
                 .setMin(1)
                 .setMax(50)
-                .setSaveConsumer(value -> config.shortFacingWaitTicks = value)
+                .setSaveConsumer(value -> config.setShortFacingWaitTicks(value))
                 .build());
 
         timingCategory.addEntry(entryBuilder.startIntField(Text.literal("移动等待 ticks"), config.getMoveWaitTicks())
@@ -42,7 +42,7 @@ public class MiningConfigScreen {
                 .setDefaultValue(3)
                 .setMin(1)
                 .setMax(20)
-                .setSaveConsumer(value -> config.moveWaitTicks = value)
+                .setSaveConsumer(value -> config.setMoveWaitTicks(value))
                 .build());
 
         timingCategory.addEntry(entryBuilder.startIntField(Text.literal("最大行走 ticks"), config.getMaxWalkTicks())
@@ -50,7 +50,7 @@ public class MiningConfigScreen {
                 .setDefaultValue(200)
                 .setMin(10)
                 .setMax(500)
-                .setSaveConsumer(value -> config.maxWalkTicks = value)
+                .setSaveConsumer(value -> config.setMaxWalkTicks(value))
                 .build());
 
         timingCategory.addEntry(entryBuilder.startIntField(Text.literal("最大卡住 ticks"), config.getMaxStuckTicks())
@@ -58,7 +58,7 @@ public class MiningConfigScreen {
                 .setDefaultValue(20)
                 .setMin(5)
                 .setMax(100)
-                .setSaveConsumer(value -> config.maxStuckTicks = value)
+                .setSaveConsumer(value -> config.setMaxStuckTicks(value))
                 .build());
 
         timingCategory.addEntry(entryBuilder.startIntField(Text.literal("最大挖掘 ticks"), config.getMaxBreakTicks())
@@ -66,7 +66,7 @@ public class MiningConfigScreen {
                 .setDefaultValue(400)
                 .setMin(10)
                 .setMax(1000)
-                .setSaveConsumer(value -> config.maxBreakTicks = value)
+                .setSaveConsumer(value -> config.setMaxBreakTicks(value))
                 .build());
 
         ConfigCategory distanceCategory = builder.getOrCreateCategory(Text.literal("距离配置"));
@@ -75,7 +75,7 @@ public class MiningConfigScreen {
                 .setDefaultValue(16.0)
                 .setMin(1.0)
                 .setMax(100.0)
-                .setSaveConsumer(value -> config.maxReachSquared = value)
+                .setSaveConsumer(value -> config.setMaxReachSquared(value))
                 .build());
 
         distanceCategory.addEntry(entryBuilder.startDoubleField(Text.literal("到达阈值"), config.getArriveThreshold())
@@ -83,7 +83,7 @@ public class MiningConfigScreen {
                 .setDefaultValue(1.2)
                 .setMin(0.5)
                 .setMax(5.0)
-                .setSaveConsumer(value -> config.arriveThreshold = value)
+                .setSaveConsumer(value -> config.setArriveThreshold(value))
                 .build());
 
         distanceCategory.addEntry(entryBuilder.startDoubleField(Text.literal("坠落危险阈值"), config.getFallDangerThreshold())
@@ -91,7 +91,7 @@ public class MiningConfigScreen {
                 .setDefaultValue(3.0)
                 .setMin(1.0)
                 .setMax(10.0)
-                .setSaveConsumer(value -> config.fallDangerThreshold = value)
+                .setSaveConsumer(value -> config.setFallDangerThreshold(value))
                 .build());
 
         distanceCategory.addEntry(entryBuilder.startDoubleField(Text.literal("最大垂直距离"), config.getMaxVerticalDistance())
@@ -99,7 +99,7 @@ public class MiningConfigScreen {
                 .setDefaultValue(4.0)
                 .setMin(1.0)
                 .setMax(10.0)
-                .setSaveConsumer(value -> config.maxVerticalDistance = value)
+                .setSaveConsumer(value -> config.setMaxVerticalDistance(value))
                 .build());
 
         ConfigCategory retryCategory = builder.getOrCreateCategory(Text.literal("重试配置"));
@@ -108,7 +108,7 @@ public class MiningConfigScreen {
                 .setDefaultValue(2)
                 .setMin(0)
                 .setMax(10)
-                .setSaveConsumer(value -> config.maxWalkRetries = value)
+                .setSaveConsumer(value -> config.setMaxWalkRetries(value))
                 .build());
 
         retryCategory.addEntry(entryBuilder.startIntField(Text.literal("最大面向重试次数"), config.getMaxFacingRetries())
@@ -116,7 +116,7 @@ public class MiningConfigScreen {
                 .setDefaultValue(2)
                 .setMin(0)
                 .setMax(10)
-                .setSaveConsumer(value -> config.maxFacingRetries = value)
+                .setSaveConsumer(value -> config.setMaxFacingRetries(value))
                 .build());
 
         retryCategory.addEntry(entryBuilder.startIntField(Text.literal("每 tick 最大空气跳过数"), config.getMaxAirSkipPerTick())
@@ -124,14 +124,14 @@ public class MiningConfigScreen {
                 .setDefaultValue(5)
                 .setMin(1)
                 .setMax(20)
-                .setSaveConsumer(value -> config.maxAirSkipPerTick = value)
+                .setSaveConsumer(value -> config.setMaxAirSkipPerTick(value))
                 .build());
 
         ConfigCategory debugCategory = builder.getOrCreateCategory(Text.literal("调试配置"));
         debugCategory.addEntry(entryBuilder.startBooleanToggle(Text.literal("调试模式"), config.isDebug())
                 .setTooltip(Text.literal("启用调试日志输出"))
                 .setDefaultValue(false)
-                .setSaveConsumer(value -> config.debug = value)
+                .setSaveConsumer(value -> config.setDebug(value))
                 .build());
         debugCategory.addEntry(entryBuilder.startSelector(Text.literal("挖掘模式"), MinerMod.values(), config.getMinerMod())
                 .setTooltip(Text.literal("选择挖掘模式"))
@@ -142,7 +142,29 @@ public class MiningConfigScreen {
                         case FROM_BOTTOM_UP -> Text.literal("从底部向上");
                     };
                 })
-                .setSaveConsumer(value -> config.minerMod = value)
+                .setSaveConsumer(value -> config.setMinerMod(value))
+                .build());
+
+        debugCategory.addEntry(entryBuilder.startBooleanToggle(Text.literal("回滚检测"), config.isRollbackDetectionEnabled())
+                .setTooltip(Text.literal("启用/禁用回滚检测，禁用后可提升性能但可能丢失被服务器回滚的方块"))
+                .setDefaultValue(true)
+                .setSaveConsumer(value -> config.setEnableRollbackDetection(value))
+                .build());
+
+        debugCategory.addEntry(entryBuilder.startIntField(Text.literal("最大回滚重试次数"), config.getMaxRollbackRetries())
+                .setTooltip(Text.literal("回滚检测发现方块未挖时的最大重试次数"))
+                .setDefaultValue(3)
+                .setMin(0)
+                .setMax(20)
+                .setSaveConsumer(value -> config.setMaxRollbackRetries(value))
+                .build());
+
+        debugCategory.addEntry(entryBuilder.startIntField(Text.literal("回滚检测间隔"), config.getRollbackCheckInterval())
+                .setTooltip(Text.literal("两次回滚检测之间的时间间隔（单位：ticks，20 tick = 1 秒）"))
+                .setDefaultValue(20)
+                .setMin(5)
+                .setMax(100)
+                .setSaveConsumer(value -> config.setRollbackCheckInterval(value))
                 .build());
 
         return builder.build();

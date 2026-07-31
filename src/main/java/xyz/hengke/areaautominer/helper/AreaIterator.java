@@ -15,31 +15,31 @@ public class AreaIterator {
     }
 
     public boolean advanceFromTopDown() {
-        int deltaZ = context.currentZ - context.minZ;
+        int deltaZ = context.getCurrentZ() - context.getMinZ();
         boolean reverseLine = (deltaZ % 2 == 1);
 
         if (!reverseLine) {
-            context.currentX++;
-            if (context.currentX > context.maxX) {
-                context.currentX = context.maxX;
-                context.currentZ++;
-                if (context.currentZ > context.maxZ) {
-                    context.currentZ = context.minZ;
-                    context.currentY--;
-                    if (context.currentY < context.minY) {
+            context.setCurrentX(context.getCurrentX() + 1);
+            if (context.getCurrentX() > context.getMaxX()) {
+                context.setCurrentX(context.getMaxX());
+                context.setCurrentZ(context.getCurrentZ() + 1);
+                if (context.getCurrentZ() > context.getMaxZ()) {
+                    context.setCurrentZ(context.getMinZ());
+                    context.setCurrentY(context.getCurrentY() - 1);
+                    if (context.getCurrentY() < context.getMinY()) {
                         return false;
                     }
                 }
             }
         } else {
-            context.currentX--;
-            if (context.currentX < context.minX) {
-                context.currentX = context.minX;
-                context.currentZ++;
-                if (context.currentZ > context.maxZ) {
-                    context.currentZ = context.minZ;
-                    context.currentY--;
-                    if (context.currentY < context.minY) {
+            context.setCurrentX(context.getCurrentX() - 1);
+            if (context.getCurrentX() < context.getMinX()) {
+                context.setCurrentX(context.getMinX());
+                context.setCurrentZ(context.getCurrentZ() + 1);
+                if (context.getCurrentZ() > context.getMaxZ()) {
+                    context.setCurrentZ(context.getMinZ());
+                    context.setCurrentY(context.getCurrentY() - 1);
+                    if (context.getCurrentY() < context.getMinY()) {
                         return false;
                     }
                 }
@@ -47,33 +47,50 @@ public class AreaIterator {
         }
         return true;
     }
+
     public boolean advanceFromBottomUp() {
-        if (context.currentY < context.maxY) {
-            context.currentY++;
+        context.setCurrentY(context.getCurrentY() + 1);
+
+        if (context.getCurrentY() <= context.getMaxY()) {
+            return true;
+        }
+
+        context.setCurrentY(context.getMinY());
+
+        int deltaZ = context.getCurrentZ() - context.getMinZ();
+        boolean reverseLine = (deltaZ % 2 == 1);
+
+        if (!reverseLine) {
+            context.setCurrentX(context.getCurrentX() + 1);
+            if (context.getCurrentX() > context.getMaxX()) {
+                context.setCurrentX(context.getMaxX());
+                context.setCurrentZ(context.getCurrentZ() + 1);
+                if (context.getCurrentZ() > context.getMaxZ()) {
+                    return false;
+                }
+            }
         } else {
-            context.currentY = context.minY;
-            context.currentX++;
-            
-            if (context.currentX > context.maxX) {
-                context.currentX = context.minX;
-                context.currentZ++;
-                
-                if (context.currentZ > context.maxZ) {
+            context.setCurrentX(context.getCurrentX() - 1);
+            if (context.getCurrentX() < context.getMinX()) {
+                context.setCurrentX(context.getMinX());
+                context.setCurrentZ(context.getCurrentZ() + 1);
+                if (context.getCurrentZ() > context.getMaxZ()) {
                     return false;
                 }
             }
         }
         return true;
     }
+
     public boolean advancePosition() {
         if (config.getMinerMod() == MinerMod.FROM_TOP_DOWN) {
             return advanceFromTopDown();
-        }else{
+        } else {
             return advanceFromBottomUp();
         }
     }
 
     public BlockPos getCurrentPos() {
-        return new BlockPos(context.currentX, context.currentY, context.currentZ);
+        return new BlockPos(context.getCurrentX(), context.getCurrentY(), context.getCurrentZ());
     }
 }

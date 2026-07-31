@@ -12,15 +12,15 @@ public class NotificationService {
     }
 
     public void sendMessage(String text) {
-        if (context.client.player != null) {
-            context.client.player.sendMessage(Text.literal("§a[AreaAutoMiner]"+text), false);
+        if (context.getClient().player != null) {
+            context.getClient().player.sendMessage(Text.literal("§a[AreaAutoMiner]"+text), false);
         }
     }
 
     public void logDebug(String message) {
         if (MiningConfig.getInstance().isDebug()) {
-            if (context.client.player != null) {
-                context.client.player.sendMessage(Text.literal("§7[DEBUG] " + message), false);
+            if (context.getClient().player != null) {
+                context.getClient().player.sendMessage(Text.literal("§7[DEBUG] " + message), false);
             }
         }
     }

@@ -3,7 +3,7 @@
 	"id": "areaautominer",
 	"version": "${version}",
 	"name": "AreaAutoMiner",
-	"description": "木剑左键选取点1，右键选取点2，按K自动从上往下挖掘范围内方块",
+	"description": "手持剑右键选取点1，潜行+右键选取点2，按K自动从上往下挖掘范围内方块",
 	"authors": [
 		"heng_ke"
 	],
@@ -18,9 +18,6 @@
 	"entrypoints": {
 		"main": [
 			"xyz.hengke.areaautominer.AreaAutoMiner"
-		],
-		"fabric-datagen": [
-			"xyz.hengke.areaautominer.AreaAutoMinerDataGenerator"
 		],
 		"client": [
 			"xyz.hengke.areaautominer.AreaAutoMinerClient"
