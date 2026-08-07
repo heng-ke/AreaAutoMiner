@@ -1,7 +1,8 @@
 package xyz.hengke.areaautominer.helper;
 
-import net.minecraft.block.Blocks;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.entity.ai.pathing.Path;
+import net.minecraft.registry.tag.FluidTags;
 import net.minecraft.util.math.BlockPos;
 import xyz.hengke.areaautominer.config.MiningConfig;
 import xyz.hengke.areaautominer.context.MiningContext;
@@ -9,25 +10,33 @@ import xyz.hengke.areaautominer.model.MiningState;
 import xyz.hengke.areaautominer.service.MiningCompletionService;
 import xyz.hengke.areaautominer.service.NotificationService;
 
+/**
+ * 玩家行走驱动：沿 vanilla A* 寻路算出的 {@link Path} 节点模拟按键移动。
+ *
+ * <p>原实现是"朝目标 XZ 直走 + 手写障碍/悬崖检测"的贪心逻辑，遇复杂地形易反复卡住。
+ * 现改用 {@link PathfindingHelper} 调用 vanilla {@code PathNodeNavigator} 规划完整路径，
+ * 再沿 {@code Path} 的节点逐个行走（转向当前节点 → 按 forward → 到达节点后 next()）。
+ * 障碍/悬崖规避由 vanilla 路径本身（{@code PathNodeType} 惩罚）完成，手写检测已移除。</p>
+ *
+ * <p>保留：岩浆/虚空安全跳过（玩家生命安全保护）、卡住检测、超时/重试、转向平滑、跳跃冷却。</p>
+ */
 public class MovementHelper {
     // 判定玩家是否卡住的最小移动距离（每 tick 移动小于此值视为静止）
     private static final double STUCK_MOVEMENT_THRESHOLD = 0.05;
-    // 认为玩家已足够接近目标、可以开始转向的距离（方块+玩家碰撞框的大约距离）
+    // 终点到达判定：玩家距目标方块 XZ 中心足够近，可开始转向（方块+玩家碰撞框的大约距离）
     private static final double CLOSE_ENOUGH_DISTANCE = 1.5;
+    // 中间路径节点到达判定：距当前节点 XZ 中心小于此值即前进到下一节点
+    private static final double NODE_ARRIVE_THRESHOLD = 1.0;
     // 行走重试延迟（负值表示从0开始反向计数10 tick再开始，即给予10 tick的宽限时间）
     private static final int WALK_RETRY_DELAY_TICKS = -10;
     // 跳跃后的冷却时间（tick），防止连续跳跃
     private static final int JUMP_COOLDOWN_TICKS = 10;
     // 重试跳跃的冷却时间（tick），比普通冷却稍长
     private static final int JUMP_COOLDOWN_RETRY_TICKS = 15;
-    // 每 tick 最大的视角 Y 轴旋转步数（度），限制转向速度以模拟自然视角
+    // 每 tick 最大的视角 Y 轴旋转步数（度），限制转向速度以模拟自然视角（指数平滑的硬上限保护）
     private static final float MAX_YAW_STEP = 15.0f;
-    // 距离计算的最小阈值，防止浮点精度问题导致的除零错误
-    private static final double MIN_LENGTH_THRESHOLD = 0.001;
-    // 前方障碍物检测的距离（格数），检查路径上是否有1格高以上的障碍
-    private static final int OBSTACLE_CHECK_DISTANCE = 2;
-    // 前方坠落危险检测的距离（格数），检查路径下方是否有深渊
-    private static final int FALL_CHECK_DISTANCE = 2;
+    // 指数平滑因子：每 tick 修正 yaw 偏差的比例（0.4=快，0.2=慢而平滑）
+    private static final float YAW_EMA_FACTOR = 0.35f;
 
     private final MiningContext context;
     private final InputHelper inputHelper;
@@ -35,14 +44,18 @@ public class MovementHelper {
     private final AreaIterator areaIterator;
     private final NotificationService notificationService;
     private final MiningCompletionService completionService;
+    private final PathfindingHelper pathfindingHelper;
 
-    public MovementHelper(MiningContext context, InputHelper inputHelper, CameraHelper cameraHelper, AreaIterator areaIterator, NotificationService notificationService, MiningCompletionService completionService) {
+    public MovementHelper(MiningContext context, InputHelper inputHelper, CameraHelper cameraHelper,
+                          AreaIterator areaIterator, NotificationService notificationService,
+                          MiningCompletionService completionService, PathfindingHelper pathfindingHelper) {
         this.context = context;
         this.inputHelper = inputHelper;
         this.cameraHelper = cameraHelper;
         this.areaIterator = areaIterator;
         this.notificationService = notificationService;
         this.completionService = completionService;
+        this.pathfindingHelper = pathfindingHelper;
     }
 
     public void walkToBlock() {
@@ -55,34 +68,22 @@ public class MovementHelper {
 
         BlockPos targetPos = areaIterator.getCurrentPos();
 
+        // === 安全保护（保留）：岩浆/虚空直接跳过方块 ===
         if (isLavaDanger(targetPos) || isVoidDanger(targetPos)) {
             inputHelper.releaseAllKeys();
             notificationService.sendMessage("§c检测到危险环境（岩浆/虚空），跳过方块: " + targetPos);
-            context.setWalkTicks(0);
-            context.setStuckCounter(0);
-            context.setWalkRetryCount(0);
-            completionService.onBlockSkipped(targetPos);
-            if (!areaIterator.advancePosition()) {
-                completionService.completeMining();
-                return;
-            }
-            context.setState(MiningState.FINDING_BLOCK);
+            resetWalkAndSkipOrAdvance(targetPos);
             return;
         }
 
-        double targetX = targetPos.getX() + 0.5;
-        double targetZ = targetPos.getZ() + 0.5;
-
         context.setWalkTicks(context.getWalkTicks() + 1);
+
+        // === 卡住检测（保留）===
         double currentPlayerX = client.player.getX();
         double currentPlayerZ = client.player.getZ();
-
-        double dx = targetX - currentPlayerX;
-        double dz = targetZ - currentPlayerZ;
-        double horizontalLength = Math.sqrt(dx * dx + dz * dz);
-
         double movedDistance = Math.sqrt(
-            Math.pow(currentPlayerX - context.getLastPlayerX(), 2) + Math.pow(currentPlayerZ - context.getLastPlayerZ(), 2)
+            Math.pow(currentPlayerX - context.getLastPlayerX(), 2) +
+            Math.pow(currentPlayerZ - context.getLastPlayerZ(), 2)
         );
         if (movedDistance < STUCK_MOVEMENT_THRESHOLD) {
             context.setStuckCounter(context.getStuckCounter() + 1);
@@ -92,50 +93,32 @@ public class MovementHelper {
             context.setLastPlayerZ(currentPlayerZ);
         }
 
-        if (context.getWalkTicks() > config.getMaxWalkTicks() || context.getStuckCounter() > config.getMaxStuckTicks()) {
-            if (horizontalLength < CLOSE_ENOUGH_DISTANCE) {
-                inputHelper.releaseAllKeys();
-                context.setWaitTicks(config.getMoveWaitTicks());
-                context.setMovingWait(true);
-                context.setAdjacentBlock(false);
-                cameraHelper.calculateTargetLook(targetPos);
-                context.setState(MiningState.FACING_BLOCK);
-                context.setWalkTicks(0);
-                context.setStuckCounter(0);
-                context.setWalkRetryCount(0);
-                notificationService.logDebug("已足够接近目标，开始转向");
-                return;
-            }
-            context.setWalkRetryCount(context.getWalkRetryCount() + 1);
-            if (context.getWalkRetryCount() <= config.getMaxWalkRetries()) {
-                notificationService.logDebug("行走超时或卡住，第 " + context.getWalkRetryCount() + " 次重试");
-                inputHelper.releaseAllKeys();
-                context.setWalkTicks(WALK_RETRY_DELAY_TICKS);
-                context.setStuckCounter(0);
-                context.setLastPlayerX(client.player.getX());
-                context.setLastPlayerZ(client.player.getZ());
-                if (context.getWalkRetryCount() > 1 && client.player.isOnGround() && context.getJumpCooldown() == 0) {
-                    inputHelper.setKeyPressed(client.options.jumpKey, true);
-                    context.setJumpCooldown(JUMP_COOLDOWN_RETRY_TICKS);
-                    notificationService.logDebug("重试时尝试跳跃");
-                }
-                return;
-            }
-            notificationService.logDebug("行走超时或卡住，重试 " + config.getMaxWalkRetries() + " 次后仍失败，跳过当前方块");
+        // === 重试延迟期：释放按键让玩家稳定，不寻路 ===
+        if (context.getWalkTicks() < 0) {
             inputHelper.releaseAllKeys();
-            context.setWalkRetryCount(0);
-            completionService.onBlockSkipped(targetPos);
-            context.setWalkTicks(0);
-            context.setStuckCounter(0);
-            if (!areaIterator.advancePosition()) {
-                completionService.completeMining();
-                return;
-            }
-            context.setState(MiningState.FINDING_BLOCK);
             return;
         }
 
-        if (horizontalLength < config.getArriveThreshold()) {
+        // === 超时 / 卡住：先看是否已到目标近旁，否则重试或跳过 ===
+        if (context.getWalkTicks() > config.getMaxWalkTicks() ||
+            context.getStuckCounter() > config.getMaxStuckTicks()) {
+
+            double dxT = targetPos.getX() + 0.5 - client.player.getX();
+            double dzT = targetPos.getZ() + 0.5 - client.player.getZ();
+            if (Math.sqrt(dxT * dxT + dzT * dzT) < CLOSE_ENOUGH_DISTANCE) {
+                arriveAndFace(targetPos);
+                return;
+            }
+            triggerRetryOrSkip(targetPos, "行走超时或卡住", WALK_RETRY_DELAY_TICKS);
+            return;
+        }
+
+        // === 终点到达判定（保留）===
+        double dxEnd = targetPos.getX() + 0.5 - client.player.getX();
+        double dzEnd = targetPos.getZ() + 0.5 - client.player.getZ();
+        double endDist = Math.sqrt(dxEnd * dxEnd + dzEnd * dzEnd);
+        if (endDist < config.getArriveThreshold()) {
+            // 终点在头顶上方且可跳跃上去 → 跳跃（保留原逻辑）
             if (targetPos.getY() > client.player.getY()) {
                 BlockPos targetTopPos = targetPos.up();
                 BlockPos targetAboveTopPos = targetPos.up(2);
@@ -151,154 +134,137 @@ public class MovementHelper {
                     notificationService.logDebug("目标方块上方没有足够空间，尝试直接挖掘");
                 }
             }
-            inputHelper.releaseAllKeys();
-            context.setWaitTicks(config.getMoveWaitTicks());
-            context.setMovingWait(true);
-            context.setAdjacentBlock(false);
-            cameraHelper.calculateTargetLook(targetPos);
-            context.setState(MiningState.FACING_BLOCK);
-            context.setWalkTicks(0);
-            context.setStuckCounter(0);
-            context.setWalkRetryCount(0);
-            notificationService.logDebug("到达目标位置，准备转向");
+            arriveAndFace(targetPos);
             return;
         }
 
-        float walkYaw = (float) Math.atan2(dz, dx) * (180.0F / (float) Math.PI) - 90.0F;
-        float smoothedYaw = cameraHelper.smoothYawTowards(client.player.getYaw(), walkYaw, MAX_YAW_STEP);
-        client.player.setYaw(smoothedYaw);
-
-        boolean needJump = checkObstacleInFront(dx, dz) && client.player.isOnGround() && context.getJumpCooldown() == 0;
-        boolean wouldFall = targetPos.getY() < client.player.getY() && checkFallDanger(dx, dz);
-
-        if (wouldFall && !needJump) {
-            inputHelper.releaseAllKeys();
-            completionService.onBlockSkipped(targetPos);
-            context.setWalkTicks(0);
-            context.setStuckCounter(0);
-            if (!areaIterator.advancePosition()) {
-                completionService.completeMining();
+        // === 寻路 + 节点行走（核心）===
+        Path path = context.getCurrentPath();
+        if (path == null || path.isFinished()) {
+            // 重新计算路径
+            path = pathfindingHelper.computePath(targetPos);
+            context.setCurrentPath(path);
+            if (path == null) {
+                // 寻路失败：区分"区块未加载"与"不可达"，未加载给更长等待让区块加载完成
+                boolean unloaded = !client.world.isPosLoaded(targetPos);
+                triggerRetryOrSkip(targetPos,
+                        unloaded ? "目标区块未加载" : "目标不可达",
+                        unloaded ? -20 : WALK_RETRY_DELAY_TICKS);
                 return;
             }
-            context.setState(MiningState.FINDING_BLOCK);
-            return;
         }
 
-        inputHelper.setKeyPressed(client.options.forwardKey, true);
+        // 当前目标节点
+        BlockPos nodePos = path.getCurrentNodePos();
+        double dxN = nodePos.getX() + 0.5 - client.player.getX();
+        double dzN = nodePos.getZ() + 0.5 - client.player.getZ();
+        double nodeDist = Math.sqrt(dxN * dxN + dzN * dzN);
 
+        // 到达当前节点 → 前进到下一节点
+        if (nodeDist < NODE_ARRIVE_THRESHOLD) {
+            path.next();
+            if (path.isFinished()) {
+                // 路径走完但未到终点（精度误差），下 tick 重算
+                context.setCurrentPath(null);
+                arriveAndFace(targetPos);
+                return;
+            }
+            nodePos = path.getCurrentNodePos();
+            dxN = nodePos.getX() + 0.5 - client.player.getX();
+            dzN = nodePos.getZ() + 0.5 - client.player.getZ();
+        }
+
+        // 转向当前节点（atan2 指向最近节点）+ 指数平滑（EMA）替代线性 clamp
+        // 指数平滑消除小偏差时"跳变到目标"感，节点切换时大角度分散到多 tick 平滑完成
+        float walkYaw = (float) Math.atan2(dzN, dxN) * (180.0F / (float) Math.PI) - 90.0F;
+        float yawDiff = SpatialHelper.normalizeYawDiff(walkYaw - client.player.getYaw());
+        float clampedDiff = Math.max(-MAX_YAW_STEP, Math.min(MAX_YAW_STEP, yawDiff));
+        float smoothedYaw = client.player.getYaw() + clampedDiff * YAW_EMA_FACTOR;
+        client.player.setYaw(smoothedYaw);
+
+        // 跳跃判定：当前节点高于玩家方块 Y（上坡/上台阶）且 onGround
+        boolean needJump = nodePos.getY() > client.player.getBlockPos().getY()
+                && client.player.isOnGround()
+                && context.getJumpCooldown() == 0;
+
+        inputHelper.setKeyPressed(client.options.forwardKey, true);
         if (needJump) {
             inputHelper.setKeyPressed(client.options.jumpKey, true);
             context.setJumpCooldown(JUMP_COOLDOWN_TICKS);
-            notificationService.logDebug("跳跃越过障碍");
+            notificationService.logDebug("沿路径跳跃上坡");
         } else {
             inputHelper.setKeyPressed(client.options.jumpKey, false);
         }
     }
 
-    public boolean checkObstacleInFront(double dx, double dz) {
-        MinecraftClient client = context.getClient();
-        double length = Math.sqrt(dx * dx + dz * dz);
-        if (length < MIN_LENGTH_THRESHOLD) return false;
-
-        double stepX = dx / length;
-        double stepZ = dz / length;
-
-        double[] checkOffsets = {-0.2, 0, 0.2};
-        int[] checkDistances = {1, OBSTACLE_CHECK_DISTANCE};
-
-        for (int dist : checkDistances) {
-            for (double offset : checkOffsets) {
-                BlockPos footPos = new BlockPos(
-                    (int) Math.floor(client.player.getX() + stepX * dist + stepZ * offset),
-                    (int) Math.floor(client.player.getY()),
-                    (int) Math.floor(client.player.getZ() + stepZ * dist - stepX * offset)
-                );
-
-                if (footPos.getX() < context.getMinX() || footPos.getX() > context.getMaxX() || 
-                    footPos.getZ() < context.getMinZ() || footPos.getZ() > context.getMaxZ()) {
-                    continue;
-                }
-
-                BlockPos headPos = footPos.up();
-                BlockPos aboveHeadPos = footPos.up(2);
-                BlockPos highPos = footPos.up(3);
-
-                boolean footBlocked = !client.world.getBlockState(footPos).isAir();
-                boolean headBlocked = !client.world.getBlockState(headPos).isAir();
-                boolean aboveHeadClear = client.world.getBlockState(aboveHeadPos).isAir();
-                boolean highClear = client.world.getBlockState(highPos).isAir();
-
-                if ((footBlocked || headBlocked) && aboveHeadClear && highClear) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    public boolean checkFallDanger(double dx, double dz) {
-        MinecraftClient client = context.getClient();
+    /**
+     * 行走失败（超时/卡住/寻路失败）的统一处理：递增重试计数，
+     * 未超限则进入重试延迟（清空路径下 tick 重算），超限则跳过当前方块。
+     *
+     * @param retryDelayTicks 重试前等待的 tick 数（负值，从 0 反向计数），未加载用更长等待
+     */
+    private void triggerRetryOrSkip(BlockPos targetPos, String reason, int retryDelayTicks) {
         MiningConfig config = MiningConfig.getInstance();
-        double length = Math.sqrt(dx * dx + dz * dz);
-        if (length < MIN_LENGTH_THRESHOLD) return false;
-
-        double stepX = dx / length;
-        double stepZ = dz / length;
-
-        BlockPos playerPos = new BlockPos(
-            (int) Math.floor(client.player.getX()),
-            (int) Math.floor(client.player.getY()),
-            (int) Math.floor(client.player.getZ())
-        );
-
-        int playerGroundY = findGroundY(playerPos);
-        if (playerGroundY == Integer.MIN_VALUE) {
-            return true;
-        }
-
-        for (int dist = 1; dist <= FALL_CHECK_DISTANCE; dist++) {
-            BlockPos frontPos = new BlockPos(
-                (int) Math.floor(client.player.getX() + stepX * dist),
-                (int) Math.floor(client.player.getY()),
-                (int) Math.floor(client.player.getZ() + stepZ * dist)
-            );
-
-            if (frontPos.getX() < context.getMinX() || frontPos.getX() > context.getMaxX() || 
-                frontPos.getZ() < context.getMinZ() || frontPos.getZ() > context.getMaxZ()) {
-                continue;
-            }
-
-            int frontGroundY = findGroundY(frontPos);
-            if (frontGroundY == Integer.MIN_VALUE) {
-                return true;
-            }
-
-            int heightDiff = playerGroundY - frontGroundY;
-            if (heightDiff >= config.getFallDangerThreshold()) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static final int GROUND_SEARCH_RANGE = 32;
-
-    public int findGroundY(BlockPos pos) {
         MinecraftClient client = context.getClient();
-        int minSearchY = Math.max(pos.getY() - GROUND_SEARCH_RANGE, client.world.getBottomY());
-        for (int y = pos.getY(); y >= minSearchY; y--) {
-            BlockPos checkPos = new BlockPos(pos.getX(), y, pos.getZ());
-            if (!client.world.getBlockState(checkPos).isAir()) {
-                return y;
+        context.setWalkRetryCount(context.getWalkRetryCount() + 1);
+
+        if (context.getWalkRetryCount() <= config.getMaxWalkRetries()) {
+            notificationService.logDebug(reason + "，第 " + context.getWalkRetryCount() + " 次重试（重算路径）");
+            inputHelper.releaseAllKeys();
+            context.setWalkTicks(retryDelayTicks);
+            context.setStuckCounter(0);
+            context.setLastPlayerX(client.player.getX());
+            context.setLastPlayerZ(client.player.getZ());
+            context.setCurrentPath(null);
+            // 重试时原地跳跃尝试脱困
+            if (context.getWalkRetryCount() > 1 && client.player.isOnGround() && context.getJumpCooldown() == 0) {
+                inputHelper.setKeyPressed(client.options.jumpKey, true);
+                context.setJumpCooldown(JUMP_COOLDOWN_RETRY_TICKS);
+                notificationService.logDebug("重试时尝试跳跃");
             }
+            return;
         }
-        return Integer.MIN_VALUE;
+        notificationService.logDebug(reason + "，重试 " + config.getMaxWalkRetries() + " 次仍失败，跳过方块");
+        inputHelper.releaseAllKeys();
+        resetWalkAndSkipOrAdvance(targetPos);
     }
 
+    /** 到达目标，转入 FACING_BLOCK（提取原到达逻辑） */
+    private void arriveAndFace(BlockPos targetPos) {
+        MiningConfig config = MiningConfig.getInstance();
+        inputHelper.releaseAllKeys();
+        context.setWaitTicks(config.getMoveWaitTicks());
+        context.setMovingWait(true);
+        context.setAdjacentBlock(false);
+        context.setCurrentPath(null);
+        cameraHelper.calculateTargetLook(targetPos);
+        context.setState(MiningState.FACING_BLOCK);
+        context.setWalkTicks(0);
+        context.setStuckCounter(0);
+        context.setWalkRetryCount(0);
+        notificationService.logDebug("到达目标位置，准备转向");
+    }
+
+    /** 重置行走状态并前进到下一方块或完成（提取原跳过逻辑） */
+    private void resetWalkAndSkipOrAdvance(BlockPos targetPos) {
+        context.setWalkTicks(0);
+        context.setStuckCounter(0);
+        context.setWalkRetryCount(0);
+        context.setCurrentPath(null);
+        completionService.onBlockSkipped(targetPos);
+        if (!areaIterator.advancePosition()) {
+            completionService.completeMining();
+            return;
+        }
+        context.setState(MiningState.FINDING_BLOCK);
+    }
+
+    // === 保留：玩家生命安全保护（非寻路逻辑）===
     private boolean isLavaDanger(BlockPos targetPos) {
         MinecraftClient client = context.getClient();
-        if (client.world.getBlockState(targetPos).isOf(Blocks.LAVA)) return true;
-        if (client.world.getBlockState(targetPos.down()).isOf(Blocks.LAVA)) return true;
+        // 使用 FluidTags.LAVA 涵盖岩浆源块与流动岩浆（两者均造成伤害）
+        if (client.world.getFluidState(targetPos).isIn(FluidTags.LAVA)) return true;
+        if (client.world.getFluidState(targetPos.down()).isIn(FluidTags.LAVA)) return true;
         BlockPos playerPos = new BlockPos(
             (int) Math.floor(client.player.getX()),
             (int) Math.floor(client.player.getY()),
@@ -306,8 +272,7 @@ public class MovementHelper {
         );
         for (int dx = -1; dx <= 1; dx++) {
             for (int dz = -1; dz <= 1; dz++) {
-                BlockPos checkPos = playerPos.add(dx, 0, dz);
-                if (client.world.getBlockState(checkPos).isOf(Blocks.LAVA)) return true;
+                if (client.world.getFluidState(playerPos.add(dx, 0, dz)).isIn(FluidTags.LAVA)) return true;
             }
         }
         return false;
@@ -315,6 +280,16 @@ public class MovementHelper {
 
     private boolean isVoidDanger(BlockPos targetPos) {
         MinecraftClient client = context.getClient();
-        return targetPos.getY() < client.world.getBottomY();
+        if (targetPos.getY() < client.world.getBottomY()) return true;
+        // 接近世界底部时检查下方支撑（避免玩家走到悬空方块后坠入虚空）
+        if (targetPos.getY() < client.world.getBottomY() + 8) {
+            for (int dy = -1; dy >= -5; dy--) {
+                if (!client.world.getBlockState(targetPos.add(0, dy, 0)).isAir()) {
+                    return false;  // 下方有支撑，安全
+                }
+            }
+            return true;  // 下方 5 格全空气，虚空危险
+        }
+        return false;
     }
 }

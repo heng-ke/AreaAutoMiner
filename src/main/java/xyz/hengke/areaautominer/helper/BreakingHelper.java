@@ -1,8 +1,8 @@
 package xyz.hengke.areaautominer.helper;
 
-import net.minecraft.block.Blocks;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.item.ItemStack;
+import net.minecraft.registry.tag.FluidTags;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.GameMode;
 import xyz.hengke.areaautominer.config.MiningConfig;
@@ -39,8 +39,8 @@ public class BreakingHelper {
             (int) Math.floor(client.player.getY()),
             (int) Math.floor(client.player.getZ())
         );
-        if (client.world.getBlockState(playerPos.down()).isOf(Blocks.LAVA)) {
-            notificationService.sendMessage("§c检测到玩家脚下是岩浆源块，停止挖掘");
+        if (client.world.getFluidState(playerPos.down()).isIn(FluidTags.LAVA)) {
+            notificationService.sendMessage("§c检测到玩家脚下是岩浆，停止挖掘");
             completionService.onBlockSkipped(targetPos);
             if (!areaIterator.advancePosition()) {
                 completionService.completeMining();
@@ -82,8 +82,8 @@ public class BreakingHelper {
         float pitchDiff = Math.abs(context.getTargetPitch() - client.player.getPitch());
 
         if (Math.abs(yawDiff) > FACING_RE_THRESHOLD_DEGREES || pitchDiff > FACING_RE_THRESHOLD_DEGREES) {
-            context.setWaitTicks(config.getShortFacingWaitTicks());
-            context.setInitialWaitTicks(context.getWaitTicks());
+            // 不设 waitTicks/initialWaitTicks：让 faceBlock 的 initTurningParameters 自动处理，
+            // 避免 faceStartYaw 过时导致跳变（initTurningParameters 会根据偏差自适应 waitTicks）
             context.setAdjacentBlock(true);
             context.setState(MiningState.FACING_BLOCK);
             notificationService.logDebug("挖掘时视角偏移过大，重新转向");

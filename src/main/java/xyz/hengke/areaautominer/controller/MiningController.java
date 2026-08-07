@@ -9,6 +9,7 @@ import xyz.hengke.areaautominer.helper.BreakingHelper;
 import xyz.hengke.areaautominer.helper.CameraHelper;
 import xyz.hengke.areaautominer.helper.InputHelper;
 import xyz.hengke.areaautominer.helper.MovementHelper;
+import xyz.hengke.areaautominer.helper.PathfindingHelper;
 import xyz.hengke.areaautominer.config.MiningConfig;
 import xyz.hengke.areaautominer.listener.MiningListener;
 import xyz.hengke.areaautominer.model.MinerMod;
@@ -27,6 +28,7 @@ public class MiningController {
     private final BreakingHelper breakingHelper;
     private final BlockFinder blockFinder;
     private final NotificationService notificationService;
+    private final PathfindingHelper pathfindingHelper;
 
     public MiningController(MinecraftClient client) {
         this.context = new MiningContext(client);
@@ -35,8 +37,9 @@ public class MiningController {
         var completionService = new MiningCompletionService(context, inputHelper, notificationService);
         this.cameraHelper = new CameraHelper(context, inputHelper, notificationService);
         var areaIterator = new AreaIterator(context);
+        this.pathfindingHelper = new PathfindingHelper(context, notificationService);
         this.breakingHelper = new BreakingHelper(context, areaIterator, notificationService, completionService, inputHelper);
-        this.movementHelper = new MovementHelper(context, inputHelper, cameraHelper, areaIterator, notificationService, completionService);
+        this.movementHelper = new MovementHelper(context, inputHelper, cameraHelper, areaIterator, notificationService, completionService, pathfindingHelper);
         this.blockFinder = new BlockFinder(context, areaIterator, cameraHelper, notificationService, completionService);
     }
 
@@ -46,7 +49,6 @@ public class MiningController {
 
     public void startMining(BlockPos p1, BlockPos p2) {
         if (context.isMining()) return;
-        MinecraftClient client = context.getClient();
         if (p1 == null || p2 == null) {
             notificationService.sendMessage("§c请先选择区域！");
             return;
@@ -57,9 +59,8 @@ public class MiningController {
         context.setMining(true);
 
         MiningConfig miningConfig = MiningConfig.getInstance();
-        int playerY = (int) Math.floor(client.player.getY());
         if (miningConfig.getMinerMod() == MinerMod.FROM_TOP_DOWN) {
-            context.setCurrentY(Math.min(context.getMaxY(), playerY + 1));
+            context.setCurrentY(context.getMaxY());
         } else {
             context.setCurrentY(context.getMinY());
         }
@@ -91,6 +92,7 @@ public class MiningController {
         context.setMining(false);
         context.setState(MiningState.IDLE);
         inputHelper.releaseAllKeys();
+        pathfindingHelper.cleanup();
 
         notificationService.sendMessage("§c停止挖掘");
         if (context.getListener() != null) {
@@ -157,6 +159,9 @@ public class MiningController {
         while (iterator.hasNext()) {
             BlockPos pos = iterator.next();
             if (!client.world.getBlockState(pos).isAir()) {
+                // 保存主遍历中断点，供挖完回滚方块后由 AreaIterator.advancePosition 自动恢复
+                context.setRollbackResumePos(new BlockPos(
+                        context.getCurrentX(), context.getCurrentY(), context.getCurrentZ()));
                 context.setCurrentX(pos.getX());
                 context.setCurrentY(pos.getY());
                 context.setCurrentZ(pos.getZ());

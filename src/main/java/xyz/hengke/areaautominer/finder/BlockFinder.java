@@ -87,10 +87,12 @@ public class BlockFinder {
             return;
         }
 
-        context.setWaitTicks(cameraHelper.calculateDynamicWaitTicks(yawDiff, pitchDiff));
-        context.setInitialWaitTicks(context.getWaitTicks());
+        // 不设 waitTicks/initialWaitTicks：此时 waitTicks=0（上一轮 faceBlock 完成时归零），
+        // faceBlock 的 initTurningParameters 守卫（waitTicks<=0）会自动设置
+        // faceStartYaw=currentYaw 并计算自适应 waitTicks，避免 faceStartYaw 过时导致跳变
         context.setFacingRetryCount(0);
         context.setState(MiningState.FACING_BLOCK);
-        notificationService.logDebug("开始转向，需要转动: " + Math.round(Math.abs(yawDiff)) + "度，等待: " + context.getWaitTicks() + "tick");
+        // waitTicks 由 faceBlock 的 initTurningParameters 在下 tick 自动设置，此处尚未计算
+        notificationService.logDebug("开始转向，需要转动: " + Math.round(Math.abs(yawDiff)) + "度");
     }
 }

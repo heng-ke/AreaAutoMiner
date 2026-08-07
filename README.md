@@ -1,6 +1,10 @@
 # AreaAutoMiner
 
-A client-side Minecraft Fabric mod that automatically mines every block inside a cuboid region you select in-game. It walks to each block, turns to face it, and breaks it — mimicking natural, human-like input so it stays within the vanilla reach limit. It is recommended to use this mod in single-player or private servers, and to check with the server administrator before using it in public servers. If the server administrator detects any anti-cheat violations, the consequences are your own.
+This client-side Minecraft Fabric mod allows you to automatically break all blocks inside a manually selected cuboid region.
+It follows the vanilla Minecraft movement rules strictly: your player will walk to a valid reachable position, adjust their view angle to face the target block, and break it, with all operations fully compliant with the game's original reach limit and mining speed.
+This mod is designed exclusively for use in single-player worlds and your own private multiplayer servers.
+It is not recommended to use it on public or third-party servers. Before attempting any use outside of your own worlds, you must obtain explicit written permission from the server administrator in advance. We do not encourage any behavior that violates server rules, and any potential account ban or anti-cheat penalties caused by improper use are the full responsibility of the user.
+
 
 [中文文档](README_CN.md)
 
@@ -10,7 +14,7 @@ A client-side Minecraft Fabric mod that automatically mines every block inside a
 - **Visual region preview** — a green outline box renders the selected cuboid (visible up to 256 blocks away).
 - **Two mining modes** — `FROM_TOP_DOWN` (top → bottom) and `FROM_BOTTOM_UP` (bottom → top).
 - **Human-like behavior** — smooth view rotation with sinusoidal jitter, natural swing animations, simulated key presses, and a strict 4-block reach limit.
-- **Smart movement** — obstacle detection with auto-jump, cliff / fall-danger detection, lava & void avoidance, stuck detection, and walking retries.
+- **Smart movement** — vanilla A* pathfinding (`net.minecraft.entity.ai.pathing`) plans a full route that auto-avoids obstacles/cliffs, plus lava & void avoidance, stuck detection, and walking retries.
 - **Survival-aware mining** — proper `attackBlock` + `updateBlockBreakingProgress` progression, tool durability checks, plus creative-mode instant break.
 - **Rollback detection** — periodically re-scans the area to re-mine any blocks rolled back by the server.
 - **Safety stops** — automatically halts on player death, game pause, or disconnect.
@@ -68,8 +72,8 @@ Open **Mods → AreaAutoMiner → Config** (requires Mod Menu + Cloth Config), o
 | --- | --- | --- |
 | Max reach squared | 16.0 | Max horizontal reach squared (4 blocks) |
 | Arrive threshold | 1.2 | Distance at which the player is considered arrived |
-| Fall danger threshold | 3.0 | Height difference counted as a fall risk |
 | Max vertical distance | 4.0 | Max vertical distance to a target block |
+| Path follow range | 32 | Max vanilla A* pathfinding distance, also the chunk cache radius (blocks). Too small → far targets fail to path; too large → performance hit |
 
 ### Retry
 
@@ -98,7 +102,7 @@ IDLE → FINDING_BLOCK → WALKING_TO_BLOCK → FACING_BLOCK → BREAKING → (l
 ```
 
 1. **FINDING_BLOCK** — [BlockFinder](src/main/java/xyz/hengke/areaautominer/finder/BlockFinder.java) skips air, checks reach / vertical distance / line of sight, and either starts walking or jumps straight to facing.
-2. **WALKING_TO_BLOCK** — [MovementHelper](src/main/java/xyz/hengke/areaautominer/helper/MovementHelper.java) steers the player toward the block with simulated key presses, jumps obstacles, and skips blocks that are too dangerous to reach.
+2. **WALKING_TO_BLOCK** — [PathfindingHelper](src/main/java/xyz/hengke/areaautominer/helper/PathfindingHelper.java) calls vanilla A* pathfinding (`PathNodeNavigator`) to plan a full route to the target block, and [MovementHelper](src/main/java/xyz/hengke/areaautominer/helper/MovementHelper.java) walks the player along the `Path` nodes with simulated key presses, skipping blocks that are too dangerous to reach.
 3. **FACING_BLOCK** — [CameraHelper](src/main/java/xyz/hengke/areaautominer/helper/CameraHelper.java) smoothly rotates the view toward the target with dynamic jitter that fades as it converges.
 4. **BREAKING** — [BreakingHelper](src/main/java/xyz/hengke/areaautominer/helper/BreakingHelper.java) breaks the block (creative instant-break, or survival `attackBlock` + `updateBlockBreakingProgress`), then advances to the next block once it becomes air.
 

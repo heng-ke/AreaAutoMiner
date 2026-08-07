@@ -27,7 +27,6 @@ public class MiningConfig {
     private int maxBreakTicks = 400;
     private double maxReachSquared = 16.0;
     private double arriveThreshold = 1.2;
-    private double fallDangerThreshold = 3.0;
     private double maxVerticalDistance = 4.0;
     private int maxWalkRetries = 2;
     private int maxFacingRetries = 2;
@@ -37,6 +36,8 @@ public class MiningConfig {
     private int rollbackCheckInterval = 20;
     private boolean enableRollbackDetection = true;
     private int minToolDurability = 10;
+    // vanilla A* 寻路的跟随范围（同时作为 ChunkCache 半径基准，格）
+    private int pathFollowRange = 32;
 
     private MiningConfig() {}
 
@@ -147,14 +148,6 @@ public class MiningConfig {
         this.arriveThreshold = arriveThreshold;
     }
 
-    public double getFallDangerThreshold() {
-        return fallDangerThreshold;
-    }
-
-    public void setFallDangerThreshold(double fallDangerThreshold) {
-        this.fallDangerThreshold = fallDangerThreshold;
-    }
-
     public double getMaxVerticalDistance() {
         return maxVerticalDistance;
     }
@@ -221,5 +214,17 @@ public class MiningConfig {
 
     public int getMinToolDurability() {
         return minToolDurability;
+    }
+
+    public void setMinToolDurability(int minToolDurability) {
+        this.minToolDurability = minToolDurability;
+    }
+
+    public int getPathFollowRange() {
+        return pathFollowRange;
+    }
+
+    public void setPathFollowRange(int pathFollowRange) {
+        this.pathFollowRange = pathFollowRange;
     }
 }

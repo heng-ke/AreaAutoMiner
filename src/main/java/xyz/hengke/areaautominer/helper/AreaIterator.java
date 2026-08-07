@@ -83,6 +83,15 @@ public class AreaIterator {
     }
 
     public boolean advancePosition() {
+        // 回滚恢复点：挖完回滚方块后跳回主遍历中断点，避免破坏蛇形遍历序列
+        BlockPos resume = context.getRollbackResumePos();
+        if (resume != null) {
+            context.setCurrentX(resume.getX());
+            context.setCurrentY(resume.getY());
+            context.setCurrentZ(resume.getZ());
+            context.setRollbackResumePos(null);
+            return true;  // 不推进，下 tick 从恢复点继续（若该位置已是空气，BlockFinder 会自动跳过并正常 advance）
+        }
         if (config.getMinerMod() == MinerMod.FROM_TOP_DOWN) {
             return advanceFromTopDown();
         } else {

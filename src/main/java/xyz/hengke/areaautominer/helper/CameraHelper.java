@@ -11,22 +11,16 @@ import xyz.hengke.areaautominer.service.NotificationService;
 public class CameraHelper {
     // 判定视角转向完成的阈值（度），低于此值视为对准完成
     private static final float FACING_COMPLETE_THRESHOLD = 5.0F;
-    // 抖动角度更新间隔（毫秒），模拟人脑处理视觉反馈的延迟
-    private static final long JITTER_UPDATE_INTERVAL_MS = 80;
-    // 每次抖动偏移的增量值
-    private static final float JITTER_OFFSET_INCREMENT = 0.3f;
-    // 抖动的基础幅度（度），乘以动态缩放系数得到实际抖动幅度
-    private static final float JITTER_BASE_MAGNITUDE = 2.0f;
-    // Y 轴抖动波动的正弦频率，模拟自然手部的微颤
+    // 抖动相位每 tick 固定增量（连续平滑推进，替代原 80ms 随机跳变）
+    private static final float JITTER_PHASE_INCREMENT = 0.4f;
+    // Y 轴抖动波幅度（度），模拟自然手部微颤
+    private static final float JITTER_WAVE_YAW_MAGNITUDE = 1.5f;
+    // Pitch 轴抖动波幅度（度）
+    private static final float JITTER_WAVE_PITCH_MAGNITUDE = 0.8f;
+    // Y 轴抖动波动的正弦频率
     private static final float WAVE_YAW_FREQUENCY = 2.1f;
     // Pitch 轴抖动波动的余弦频率
     private static final float WAVE_PITCH_FREQUENCY = 1.7f;
-    // 视角平滑因子基础值，控制每 tick 向目标方向转动的比例
-    private static final float SMOOTH_FACTOR_BASE = 0.15F;
-    // 视角平滑因子最大额外奖励值
-    private static final float SMOOTH_FACTOR_MAX_BONUS = 0.1F;
-    // 大角度转向的奖励阈值（度），超过此值时平滑因子提高以加快转向
-    private static final float LARGE_YAW_DIFF_BONUS_THRESHOLD = 60.0f;
 
     private final MiningContext context;
     private final InputHelper inputHelper;
@@ -43,15 +37,12 @@ public class CameraHelper {
         MinecraftClient client = context.getClient();
         inputHelper.releaseAllKeys();
 
+        // Phase 1: movingWait — 等待移动稳定后初始化转向参数
         if (context.isMovingWait()) {
             context.setWaitTicks(context.getWaitTicks() - 1);
             if (context.getWaitTicks() <= 0) {
                 context.setMovingWait(false);
-                float currentYaw = client.player.getYaw();
-                float yawDiff = SpatialHelper.normalizeYawDiff(context.getTargetYaw() - currentYaw);
-                float pitchDiff = Math.abs(context.getTargetPitch() - client.player.getPitch());
-                context.setWaitTicks(calculateDynamicWaitTicks(yawDiff, pitchDiff));
-                context.setInitialWaitTicks(context.getWaitTicks());
+                initTurningParameters(client);
                 context.setFacingRetryCount(0);
             }
             return;
@@ -62,69 +53,77 @@ public class CameraHelper {
         float yawDiff = SpatialHelper.normalizeYawDiff(context.getTargetYaw() - currentYaw);
         float pitchDiff = Math.abs(context.getTargetPitch() - currentPitch);
 
+        // 首次进入或重试后初始化转向参数（不重置重试计数）
         if (context.getWaitTicks() <= 0) {
-            context.setWaitTicks(calculateDynamicWaitTicks(yawDiff, pitchDiff));
-            context.setInitialWaitTicks(context.getWaitTicks());
+            initTurningParameters(client);
         }
 
+        // 进度（0→1）并应用 smoothstep 3t²-2t³：导数在 t=0/t=1 处为 0（慢起慢收，无首帧跳变）
+        // 使用 (waitTicks-1) 使首 tick 即有位移、末 tick 恰好到达目标，无需瞬间跳变
+        int totalTicks = Math.max(context.getInitialWaitTicks(), 2);
+        float progress = Math.min(1.0f, 1.0f - (float) (context.getWaitTicks() - 1) / totalTicks);
+        float easedProgress = 3.0f * progress * progress - 2.0f * progress * progress * progress;
+
+        // 从起始角度到目标的确定性插值（替代随机 smoothFactor，速度均匀无顿挫）
+        float totalYawDelta = SpatialHelper.normalizeYawDiff(context.getTargetYaw() - context.getFaceStartYaw());
+        float totalPitchDelta = context.getTargetPitch() - context.getFaceStartPitch();
+        float baseYaw = context.getFaceStartYaw() + totalYawDelta * easedProgress;
+        float basePitch = context.getFaceStartPitch() + totalPitchDelta * easedProgress;
+
+        // 连续正弦波抖动：每 tick 固定增量推进相位，幅度随进度三次方衰减（末帧归零，消除转向→挖掘切换时的抖动跳变）
         float jitterScale = calculateDynamicJitterScale(yawDiff, pitchDiff);
+        float jitterFade = (float) Math.pow(1.0f - easedProgress, 3.0f);
+        context.setJitterOffset(context.getJitterOffset() + JITTER_PHASE_INCREMENT);
+        float waveYaw = (float) Math.sin(context.getJitterOffset() * WAVE_YAW_FREQUENCY) * JITTER_WAVE_YAW_MAGNITUDE * jitterScale * jitterFade;
+        float wavePitch = (float) Math.cos(context.getJitterOffset() * WAVE_PITCH_FREQUENCY) * JITTER_WAVE_PITCH_MAGNITUDE * jitterScale * jitterFade;
 
-        long currentTime = System.currentTimeMillis();
-        if (currentTime - context.getLastJitterUpdate() > JITTER_UPDATE_INTERVAL_MS) {
-            context.setJitterOffset(context.getJitterOffset() + JITTER_OFFSET_INCREMENT + (float) (Math.random() * 0.2));
-            double angle = Math.random() * Math.PI * 2;
-            double magnitude = (JITTER_BASE_MAGNITUDE + Math.random() * 3.0) * jitterScale;
-            context.setCurrentJitterYaw((float) (Math.cos(angle) * magnitude));
-            context.setCurrentJitterPitch((float) (Math.sin(angle) * magnitude * 0.6));
-            context.setLastJitterUpdate(currentTime);
-        }
-
-        float waveYaw = (float) Math.sin(context.getJitterOffset() * WAVE_YAW_FREQUENCY) * 1.5f * jitterScale;
-        float wavePitch = (float) Math.cos(context.getJitterOffset() * WAVE_PITCH_FREQUENCY) * 0.8f * jitterScale;
-
-        int totalWaitTicks = Math.max(context.getInitialWaitTicks(), 2);
-        float progress = 1.0f - (float) context.getWaitTicks() / totalWaitTicks;
-        float jitterFade = Math.max(0.1f, 1.0f - progress * 0.8f);
-
-        float totalJitterYaw = (context.getCurrentJitterYaw() + waveYaw) * jitterFade;
-        float totalJitterPitch = (context.getCurrentJitterPitch() + wavePitch) * jitterFade;
-
-        float smoothFactor = (SMOOTH_FACTOR_BASE + (float) (Math.random() * SMOOTH_FACTOR_MAX_BONUS)) * (Math.abs(yawDiff) > LARGE_YAW_DIFF_BONUS_THRESHOLD ? 1.5f : 1.0f);
-        float newYaw = currentYaw + yawDiff * smoothFactor + totalJitterYaw;
-        float newPitch = currentPitch + (context.getTargetPitch() - currentPitch) * smoothFactor + totalJitterPitch;
-
-        client.player.setYaw(newYaw);
-        client.player.setPitch(newPitch);
+        client.player.setYaw(baseYaw + waveYaw);
+        client.player.setPitch(basePitch + wavePitch);
 
         context.setWaitTicks(context.getWaitTicks() - 1);
         if (context.getWaitTicks() <= 0) {
-            float finalNoise = jitterScale * 2.0f;
+            // 基于设置后的实际视角检查对准偏差（而非 tick 开始时的旧值）
+            float finalYawDiff = Math.abs(SpatialHelper.normalizeYawDiff(context.getTargetYaw() - client.player.getYaw()));
+            float finalPitchDiff = Math.abs(context.getTargetPitch() - client.player.getPitch());
 
-            if (Math.abs(yawDiff) > FACING_COMPLETE_THRESHOLD || pitchDiff > FACING_COMPLETE_THRESHOLD) {
+            if (finalYawDiff > FACING_COMPLETE_THRESHOLD || finalPitchDiff > FACING_COMPLETE_THRESHOLD) {
+                // ease-out 后仍偏差过大（外部干扰等），短重试一次（不瞬间跳变）
                 context.setFacingRetryCount(context.getFacingRetryCount() + 1);
                 if (context.getFacingRetryCount() > config.getMaxFacingRetries()) {
-                    notificationService.logDebug("转向重试次数过多，强制开始挖掘");
-                    client.player.setYaw(context.getTargetYaw() + (float)(Math.random() - 0.5) * finalNoise);
-                    client.player.setPitch(context.getTargetPitch() + (float)(Math.random() - 0.5) * (finalNoise * 0.75f));
+                    notificationService.logDebug("转向重试上限，强制开始挖掘");
                     context.setFirstBreakTick(true);
                     context.setBreakTicks(0);
                     context.setFacingRetryCount(0);
                     context.setState(MiningState.BREAKING);
                     return;
                 }
-                context.setWaitTicks(2);
-                context.setInitialWaitTicks(2);
+                // 以当前视角为新起点继续插值（initTurningParameters 内部设置 faceStartYaw=currentYaw，无跳变）
+                // waitTicks 由 calculateDynamicWaitTicks 根据剩余偏差自适应，大偏差给更多时间平滑修正
+                initTurningParameters(client);
                 return;
             }
 
-            client.player.setYaw(context.getTargetYaw() + (float)(Math.random() - 0.5) * finalNoise);
-            client.player.setPitch(context.getTargetPitch() + (float)(Math.random() - 0.5) * (finalNoise * 0.75f));
+            // 对准完成：ease-out 已平滑到达目标，无瞬间跳变
             context.setFirstBreakTick(true);
             context.setBreakTicks(0);
             context.setFacingRetryCount(0);
             context.setState(MiningState.BREAKING);
             notificationService.logDebug("转向完成，开始挖掘");
         }
+    }
+
+    /** 记录转向起始角度并计算等待 ticks（由 faceBlock 在转向开始时调用） */
+    private void initTurningParameters(MinecraftClient client) {
+        float currentYaw = client.player.getYaw();
+        float currentPitch = client.player.getPitch();
+        float yawDiff = SpatialHelper.normalizeYawDiff(context.getTargetYaw() - currentYaw);
+        float pitchDiff = Math.abs(context.getTargetPitch() - currentPitch);
+        context.setWaitTicks(calculateDynamicWaitTicks(yawDiff, pitchDiff));
+        context.setInitialWaitTicks(context.getWaitTicks());
+        context.setFaceStartYaw(currentYaw);
+        context.setFaceStartPitch(currentPitch);
+        // 不重置 jitterOffset：抖动相位跨方块/重试连续，避免相位断裂产生微跳变
+        //（重试时 jitterFade≈0 故幅度已归零，相位是否重置无可见差异，但连续更自然）
     }
 
     public void calculateTargetLook(BlockPos targetPos) {
@@ -180,7 +179,7 @@ public class CameraHelper {
         float maxDiff = Math.max(Math.abs(yawDiff), pitchDiff);
 
         if (maxDiff < 15.0F) {
-            return 2;
+            return 4;
         } else if (maxDiff < 45.0F) {
             return 6;
         } else if (maxDiff < 90.0F) {

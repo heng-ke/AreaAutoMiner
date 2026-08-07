@@ -86,20 +86,20 @@ public class MiningConfigScreen {
                 .setSaveConsumer(value -> config.setArriveThreshold(value))
                 .build());
 
-        distanceCategory.addEntry(entryBuilder.startDoubleField(Text.literal("坠落危险阈值"), config.getFallDangerThreshold())
-                .setTooltip(Text.literal("判定为有坠落危险的高度差"))
-                .setDefaultValue(3.0)
-                .setMin(1.0)
-                .setMax(10.0)
-                .setSaveConsumer(value -> config.setFallDangerThreshold(value))
-                .build());
-
         distanceCategory.addEntry(entryBuilder.startDoubleField(Text.literal("最大垂直距离"), config.getMaxVerticalDistance())
                 .setTooltip(Text.literal("玩家与目标方块的最大垂直距离"))
                 .setDefaultValue(4.0)
                 .setMin(1.0)
                 .setMax(10.0)
                 .setSaveConsumer(value -> config.setMaxVerticalDistance(value))
+                .build());
+
+        distanceCategory.addEntry(entryBuilder.startIntField(Text.literal("寻路跟随范围"), config.getPathFollowRange())
+                .setTooltip(Text.literal("vanilla A* 寻路的最大距离，同时作为区块缓存半径（格）。过小会导致远处目标寻路失败，过大影响性能"))
+                .setDefaultValue(32)
+                .setMin(8)
+                .setMax(64)
+                .setSaveConsumer(value -> config.setPathFollowRange(value))
                 .build());
 
         ConfigCategory retryCategory = builder.getOrCreateCategory(Text.literal("重试配置"));

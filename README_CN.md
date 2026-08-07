@@ -1,6 +1,9 @@
 # AreaAutoMiner
 
-一个客户端侧的 Minecraft Fabric 模组，可在游戏中选定一个长方体区域后自动挖掘其中所有方块。它会走到每个方块前、转向对准、然后破坏——全程模拟自然的类人输入，遵守原版触及距离限制。建议在单人游戏或者私人服务器中使用，在公开服务器中使用请提前与服务器管理员确认，若被反作弊检测，后果自负。
+这个客户端的Minecraft Fabric模组可以让你自动破坏手动选择的立方体区域内的所有方块。
+它严格遵循原版Minecraft的移动规则：你的玩家会走到可达的位置，调整视角面对目标方块，然后破坏它，所有操作完全遵守游戏原有的攻击范围和挖掘速度。
+这个模组仅用于单人世界和你自己的私人多人服务器。
+不建议在公共或第三方服务器上使用。在尝试在自己世界之外使用之前，你必须事先获得服务器管理员的明确书面许可。我们不鼓励任何违反服务器规则的行为，因不当使用导致的账户封禁或反作弊处罚完全由用户自负。
 
 [English README](README.md)
 
@@ -10,7 +13,7 @@
 - **区域可视化预览** —— 绿色线框渲染选定的长方体（最远 256 格可见）。
 - **两种挖掘模式** —— `FROM_TOP_DOWN`（从顶部向下）和 `FROM_BOTTOM_UP`（从底部向上）。
 - **类人行为模拟** —— 平滑视角转动配合正弦波抖动、自然挥臂动画、模拟按键输入，以及严格的 4 格触及距离限制。
-- **智能移动** —— 障碍物检测并自动跳跃、悬崖/坠落危险检测、岩浆与虚空规避、卡住检测以及行走重试。
+- **智能移动** —— 基于 vanilla A\* 寻路（`net.minecraft.entity.ai.pathing`）规划路径并自动绕开障碍/悬崖、岩浆与虚空规避、卡住检测以及行走重试。
 - **生存模式感知** —— 正确使用 `attackBlock` + `updateBlockBreakingProgress` 累积进度、工具耐久检测，并支持创造模式瞬挖。
 - **回滚检测** —— 定期重新扫描区域，重新挖掘被服务器回滚的方块。
 - **安全停止** —— 玩家死亡、游戏暂停或断开连接时自动停止。
@@ -68,8 +71,8 @@
 | --- | --- | --- |
 | 最大到达距离平方 | 16.0 | 玩家到达目标的最大水平距离平方（4 格） |
 | 到达阈值 | 1.2 | 到达目标位置的距离阈值 |
-| 坠落危险阈值 | 3.0 | 判定为有坠落危险的高度差 |
 | 最大垂直距离 | 4.0 | 玩家与目标方块的最大垂直距离 |
+| 寻路跟随范围 | 32 | vanilla A* 寻路的最大距离，同时作为区块缓存半径（格）。过小会导致远处目标寻路失败，过大影响性能 |
 
 ### 重试配置
 
@@ -98,7 +101,7 @@ IDLE → FINDING_BLOCK → WALKING_TO_BLOCK → FACING_BLOCK → BREAKING →（
 ```
 
 1. **FINDING_BLOCK** —— [BlockFinder](src/main/java/xyz/hengke/areaautominer/finder/BlockFinder.java) 跳过空气方块，检查触及距离/垂直距离/视线，然后开始行走或直接进入转向。
-2. **WALKING_TO_BLOCK** —— [MovementHelper](src/main/java/xyz/hengke/areaautominer/helper/MovementHelper.java) 通过模拟按键引导玩家走向方块，跳跃越过障碍，并跳过过于危险的目标。
+2. **WALKING_TO_BLOCK** —— [PathfindingHelper](src/main/java/xyz/hengke/areaautominer/helper/PathfindingHelper.java) 调用 vanilla A\* 寻路（`PathNodeNavigator`）规划到目标方块的完整路径，[MovementHelper](src/main/java/xyz/hengke/areaautominer/helper/MovementHelper.java) 沿 `Path` 节点模拟按键行走，并跳过过于危险的目标。
 3. **FACING_BLOCK** —— [CameraHelper](src/main/java/xyz/hengke/areaautominer/helper/CameraHelper.java) 平滑地将视角转向目标，伴随随收敛逐渐衰减的动态抖动。
 4. **BREAKING** —— [BreakingHelper](src/main/java/xyz/hengke/areaautominer/helper/BreakingHelper.java) 破坏方块（创造模式瞬挖，或生存模式 `attackBlock` + `updateBlockBreakingProgress`），方块变为空气后推进到下一个。
 
