@@ -6,10 +6,10 @@ import net.fabricmc.loader.api.FabricLoader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.File;
-import java.io.FileReader;
-import java.io.FileWriter;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import xyz.hengke.areaautominer.model.MinerMod;
 
 public class MiningConfig {
@@ -19,7 +19,6 @@ public class MiningConfig {
     private static MiningConfig INSTANCE;
 
     private int facingWaitTicks = 15;
-    private int shortFacingWaitTicks = 4;
     private int moveWaitTicks = 3;
     private int maxAirSkipPerTick = 5;
     private int maxWalkTicks = 200;
@@ -49,9 +48,9 @@ public class MiningConfig {
     }
 
     private static MiningConfig load() {
-        File configFile = getConfigFile();
-        if (configFile.exists()) {
-            try (FileReader reader = new FileReader(configFile)) {
+        Path configFile = getConfigPath();
+        if (Files.exists(configFile)) {
+            try (var reader = Files.newBufferedReader(configFile, StandardCharsets.UTF_8)) {
                 MiningConfig config = GSON.fromJson(reader, MiningConfig.class);
                 return config;
             } catch (IOException e) {
@@ -64,16 +63,16 @@ public class MiningConfig {
     }
 
     public void save() {
-        File configFile = getConfigFile();
-        try (FileWriter writer = new FileWriter(configFile)) {
+        Path configFile = getConfigPath();
+        try (var writer = Files.newBufferedWriter(configFile, StandardCharsets.UTF_8)) {
             GSON.toJson(this, writer);
         } catch (IOException e) {
             LOGGER.error("Failed to save config", e);
         }
     }
 
-    private static File getConfigFile() {
-        return new File(FabricLoader.getInstance().getConfigDir().toFile(), CONFIG_NAME);
+    private static Path getConfigPath() {
+        return FabricLoader.getInstance().getConfigDir().resolve(CONFIG_NAME);
     }
 
     public int getFacingWaitTicks() {
@@ -82,14 +81,6 @@ public class MiningConfig {
 
     public void setFacingWaitTicks(int facingWaitTicks) {
         this.facingWaitTicks = facingWaitTicks;
-    }
-
-    public int getShortFacingWaitTicks() {
-        return shortFacingWaitTicks;
-    }
-
-    public void setShortFacingWaitTicks(int shortFacingWaitTicks) {
-        this.shortFacingWaitTicks = shortFacingWaitTicks;
     }
 
     public int getMoveWaitTicks() {

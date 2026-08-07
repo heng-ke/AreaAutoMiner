@@ -29,14 +29,6 @@ public class MiningConfigScreen {
                 .setSaveConsumer(value -> config.setFacingWaitTicks(value))
                 .build());
 
-        timingCategory.addEntry(entryBuilder.startIntField(Text.literal("短面向等待 ticks"), config.getShortFacingWaitTicks())
-                .setTooltip(Text.literal("短距离转向时的等待时间（单位：ticks）"))
-                .setDefaultValue(4)
-                .setMin(1)
-                .setMax(50)
-                .setSaveConsumer(value -> config.setShortFacingWaitTicks(value))
-                .build());
-
         timingCategory.addEntry(entryBuilder.startIntField(Text.literal("移动等待 ticks"), config.getMoveWaitTicks())
                 .setTooltip(Text.literal("移动后等待稳定的时间（单位：ticks）"))
                 .setDefaultValue(3)

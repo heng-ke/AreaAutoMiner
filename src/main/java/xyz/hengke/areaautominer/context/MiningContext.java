@@ -22,15 +22,10 @@ public class MiningContext {
     private int currentZ = 0;
     private MiningState state = MiningState.IDLE;
     private int waitTicks = 0;
-    private int initialWaitTicks = 0;
 
     private float targetYaw = 0.0f;
     private float targetPitch = 0.0f;
     private boolean firstBreakTick = false;
-    private float jitterOffset = 0.0f;
-    // 转向起始角度（用于 ease-out 插值，消除顿挫与瞬间跳变）
-    private float faceStartYaw = 0.0f;
-    private float faceStartPitch = 0.0f;
     private BlockPos lastMinedPos = null;
     private boolean isAdjacentBlock = false;
     private boolean movingWait = false;
@@ -41,17 +36,14 @@ public class MiningContext {
     private int breakTicks = 0;
     private int jumpCooldown = 0;
     private int walkRetryCount = 0;
-    private int facingRetryCount = 0;
     private int rollbackRetryCount = 0;
     private int rollbackCheckTimer = 0;
-    private int rollbackScanY = 0;
+    private int rollbackScanCount = 0;  // 回滚扫描计数（checkRollback 专用，与 rollbackRetryCount 分离）
     private Set<BlockPos> minedPositions = new HashSet<>();
     // vanilla A* 寻路当前路径（沿节点行走驱动）
     private Path currentPath;
     // 回滚恢复点：检测到回滚时保存主遍历中断点，挖完回滚方块后由此恢复
     private BlockPos rollbackResumePos = null;
-    // minedPositions 超限降级标志（避免重复日志刷屏）
-    private boolean minedPositionsOverflowLogged = false;
     // minedPositions 容量上限，超限后静默降级（停止记录，回滚检测仅覆盖已记录部分）
     private static final int MAX_MINED_POSITIONS = 50000;
 
@@ -183,14 +175,6 @@ public class MiningContext {
         this.waitTicks = waitTicks;
     }
 
-    public int getInitialWaitTicks() {
-        return initialWaitTicks;
-    }
-
-    public void setInitialWaitTicks(int initialWaitTicks) {
-        this.initialWaitTicks = initialWaitTicks;
-    }
-
     public float getTargetYaw() {
         return targetYaw;
     }
@@ -213,30 +197,6 @@ public class MiningContext {
 
     public void setFirstBreakTick(boolean firstBreakTick) {
         this.firstBreakTick = firstBreakTick;
-    }
-
-    public float getJitterOffset() {
-        return jitterOffset;
-    }
-
-    public void setJitterOffset(float jitterOffset) {
-        this.jitterOffset = jitterOffset;
-    }
-
-    public float getFaceStartYaw() {
-        return faceStartYaw;
-    }
-
-    public void setFaceStartYaw(float faceStartYaw) {
-        this.faceStartYaw = faceStartYaw;
-    }
-
-    public float getFaceStartPitch() {
-        return faceStartPitch;
-    }
-
-    public void setFaceStartPitch(float faceStartPitch) {
-        this.faceStartPitch = faceStartPitch;
     }
 
     public BlockPos getLastMinedPos() {
@@ -319,14 +279,6 @@ public class MiningContext {
         this.walkRetryCount = walkRetryCount;
     }
 
-    public int getFacingRetryCount() {
-        return facingRetryCount;
-    }
-
-    public void setFacingRetryCount(int facingRetryCount) {
-        this.facingRetryCount = facingRetryCount;
-    }
-
     public int getRollbackRetryCount() {
         return rollbackRetryCount;
     }
@@ -343,18 +295,12 @@ public class MiningContext {
         this.rollbackCheckTimer = rollbackCheckTimer;
     }
 
-    public int getRollbackScanY() {
-        return rollbackScanY;
+    public int getRollbackScanCount() {
+        return rollbackScanCount;
     }
 
-    public void setRollbackScanY(int rollbackScanY) {
-        this.rollbackScanY = rollbackScanY;
-    }
-
-    public void resetWalkState() {
-        this.walkTicks = 0;
-        this.stuckCounter = 0;
-        this.walkRetryCount = 0;
+    public void setRollbackScanCount(int rollbackScanCount) {
+        this.rollbackScanCount = rollbackScanCount;
     }
 
     public void setRegion(BlockPos p1, BlockPos p2) {
@@ -368,47 +314,6 @@ public class MiningContext {
         this.maxZ = Math.max(p1.getZ(), p2.getZ());
     }
 
-    public void resetAllState() {
-        this.isMining = false;
-        this.pos1 = null;
-        this.pos2 = null;
-        this.minX = 0;
-        this.minY = 0;
-        this.minZ = 0;
-        this.maxX = 0;
-        this.maxY = 0;
-        this.maxZ = 0;
-        this.currentX = 0;
-        this.currentY = 0;
-        this.currentZ = 0;
-        this.state = MiningState.IDLE;
-        this.waitTicks = 0;
-        this.initialWaitTicks = 0;
-        this.targetYaw = 0.0f;
-        this.targetPitch = 0.0f;
-        this.firstBreakTick = false;
-        this.jitterOffset = 0.0f;
-        this.faceStartYaw = 0.0f;
-        this.faceStartPitch = 0.0f;
-        this.lastMinedPos = null;
-        this.isAdjacentBlock = false;
-        this.movingWait = false;
-        this.walkTicks = 0;
-        this.lastPlayerX = 0;
-        this.lastPlayerZ = 0;
-        this.stuckCounter = 0;
-        this.breakTicks = 0;
-        this.jumpCooldown = 0;
-        this.walkRetryCount = 0;
-        this.facingRetryCount = 0;
-        this.rollbackRetryCount = 0;
-        this.rollbackCheckTimer = 0;
-        this.rollbackScanY = 0;
-        this.currentPath = null;
-        this.rollbackResumePos = null;
-        this.minedPositionsOverflowLogged = false;
-    }
-
     public void startWalkingToBlock() {
         this.walkTicks = 0;
         this.stuckCounter = 0;
@@ -419,13 +324,6 @@ public class MiningContext {
         this.currentPath = null;
     }
 
-    public void advanceRollbackScanY() {
-        this.rollbackScanY++;
-        if (this.rollbackScanY > this.maxY) {
-            this.rollbackScanY = this.minY;
-        }
-    }
-
     public Set<BlockPos> getMinedPositions() {
         return minedPositions;
     }
@@ -433,7 +331,6 @@ public class MiningContext {
     public void addMinedPosition(BlockPos pos) {
         if (minedPositions.size() >= MAX_MINED_POSITIONS) {
             // 静默降级：超限后停止记录，回滚检测仅覆盖已记录部分
-            minedPositionsOverflowLogged = true;
             return;
         }
         minedPositions.add(pos);
@@ -461,9 +358,5 @@ public class MiningContext {
 
     public void setRollbackResumePos(BlockPos rollbackResumePos) {
         this.rollbackResumePos = rollbackResumePos;
-    }
-
-    public boolean isMinedPositionsOverflowLogged() {
-        return minedPositionsOverflowLogged;
     }
 }

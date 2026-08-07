@@ -13,7 +13,7 @@
 	},
 	"license": "MIT License",
 	"icon": "assets/areaautominer/icon.png",
-	"environment": "*",
+	"environment": "client",
 	"accessWidener": "areaautominer.accesswidener",
 	"entrypoints": {
 		"main": [

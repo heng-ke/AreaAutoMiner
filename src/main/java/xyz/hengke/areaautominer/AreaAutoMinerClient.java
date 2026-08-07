@@ -7,7 +7,6 @@ import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
 import net.fabricmc.fabric.api.event.player.UseItemCallback;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.screen.GameMenuScreen;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
@@ -15,6 +14,7 @@ import net.minecraft.text.Text;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.Hand;
 import net.minecraft.util.hit.BlockHitResult;
+import net.minecraft.util.hit.HitResult;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import org.lwjgl.glfw.GLFW;
@@ -40,10 +40,7 @@ public class AreaAutoMinerClient implements ClientModInitializer {
         miningController.setListener(new MiningListener() {
             @Override
             public void onMineComplete() {
-                MinecraftClient client = MinecraftClient.getInstance();
-                if (client.player != null) {
-                    client.player.sendMessage(Text.literal("§a挖掘完成！"), false);
-                }
+                // 通知已由 MiningCompletionService.forceCompleteMining() 统一发送，避免重复
             }
 
             @Override
@@ -77,7 +74,8 @@ public class AreaAutoMinerClient implements ClientModInitializer {
     private void onClientTick(MinecraftClient client) {
         if (client.player == null) return;
 
-        if (client.player.isDead()) {
+        // isDeadOrDying() 在 1.21.11 中不存在，使用 getHealth() <= 0 替代
+        if (!client.player.isAlive() || client.player.getHealth() <= 0) {
             if (lifeCycleState != LifeCycleState.DEAD && miningController.isMining()) {
                 miningController.stopMining();
                 client.player.sendMessage(Text.literal("§c玩家死亡，停止挖掘"), false);
@@ -86,11 +84,12 @@ public class AreaAutoMinerClient implements ClientModInitializer {
             return;
         }
 
-        boolean isPaused = client.currentScreen != null && client.currentScreen instanceof GameMenuScreen;
+        // 任意 GUI 打开时暂停（包括聊天框、箱子、配置界面等）
+        boolean isPaused = client.currentScreen != null;
         if (isPaused && miningController.isMining()) {
             if (lifeCycleState != LifeCycleState.PAUSED) {
                 miningController.stopMining();
-                client.player.sendMessage(Text.literal("§c游戏暂停，停止挖掘"), false);
+                client.player.sendMessage(Text.literal("§c界面打开，停止挖掘"), false);
             }
             lifeCycleState = LifeCycleState.PAUSED;
         } else if (!isPaused && client.player.isAlive()) {
@@ -114,6 +113,8 @@ public class AreaAutoMinerClient implements ClientModInitializer {
         if (pos1 != null && pos2 != null) {
             RegionRenderer.renderRegion(context, pos1, pos2);
         }
+        // 挖掘进行中时，用红色边框高亮当前目标方块
+        RegionRenderer.renderTargetBlock(context, miningController.getCurrentTargetPos());
     }
 
     private ActionResult onSwordUse(PlayerEntity player, World world, Hand hand) {
@@ -129,7 +130,7 @@ public class AreaAutoMinerClient implements ClientModInitializer {
                 stack.getItem() != Items.NETHERITE_SWORD) return ActionResult.PASS;
 
         BlockHitResult hit = (BlockHitResult) player.raycast(5.0, 0.0f, false);
-        if (hit == null) return ActionResult.PASS;
+        if (hit.getType() != HitResult.Type.BLOCK) return ActionResult.PASS;
 
         swordUsedThisTick = true;
         if (!player.isSneaking()) {

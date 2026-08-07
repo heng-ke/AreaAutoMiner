@@ -34,11 +34,11 @@ public class MiningController {
         this.context = new MiningContext(client);
         this.inputHelper = new InputHelper(context);
         this.notificationService = new NotificationService(context);
-        var completionService = new MiningCompletionService(context, inputHelper, notificationService);
+        this.pathfindingHelper = new PathfindingHelper(context);
+        var completionService = new MiningCompletionService(context, inputHelper, notificationService, pathfindingHelper);
         this.cameraHelper = new CameraHelper(context, inputHelper, notificationService);
         var areaIterator = new AreaIterator(context);
-        this.pathfindingHelper = new PathfindingHelper(context, notificationService);
-        this.breakingHelper = new BreakingHelper(context, areaIterator, notificationService, completionService, inputHelper);
+        this.breakingHelper = new BreakingHelper(context, areaIterator, notificationService, completionService, inputHelper, cameraHelper);
         this.movementHelper = new MovementHelper(context, inputHelper, cameraHelper, areaIterator, notificationService, completionService, pathfindingHelper);
         this.blockFinder = new BlockFinder(context, areaIterator, cameraHelper, notificationService, completionService);
     }
@@ -69,6 +69,7 @@ public class MiningController {
         context.setLastMinedPos(null);
         context.setAdjacentBlock(false);
         context.setMovingWait(false);
+        // 转向会话状态由 CameraHelper.beginFacing() 管理，无需在此重置插值字段
         context.setWalkTicks(0);
         context.setStuckCounter(0);
         context.setBreakTicks(0);
@@ -77,8 +78,8 @@ public class MiningController {
         context.setWalkRetryCount(0);
         context.setJumpCooldown(0);
         context.setRollbackRetryCount(0);
+        context.setRollbackScanCount(0);
         context.setRollbackCheckTimer(0);
-        context.setRollbackScanY(context.getMinY());
         context.setState(MiningState.FINDING_BLOCK);
 
         notificationService.sendMessage("§a开始挖掘区域");
@@ -103,6 +104,12 @@ public class MiningController {
 
     public boolean isMining() {
         return context.isMining();
+    }
+
+    /** 返回当前遍历目标方块（未在挖掘时返回 null），供渲染层高亮显示 */
+    public BlockPos getCurrentTargetPos() {
+        if (!context.isMining()) return null;
+        return new BlockPos(context.getCurrentX(), context.getCurrentY(), context.getCurrentZ());
     }
 
     public void tick() {
@@ -148,7 +155,8 @@ public class MiningController {
     private void checkRollback() {
         MiningConfig config = MiningConfig.getInstance();
 
-        if (context.getRollbackRetryCount() >= config.getMaxRollbackRetries()) {
+        // 使用 rollbackScanCount（扫描计数）替代 rollbackRetryCount（完成重试计数），二者独立
+        if (context.getRollbackScanCount() >= config.getMaxRollbackRetries()) {
             return;
         }
 
@@ -165,7 +173,7 @@ public class MiningController {
                 context.setCurrentX(pos.getX());
                 context.setCurrentY(pos.getY());
                 context.setCurrentZ(pos.getZ());
-                context.setRollbackRetryCount(context.getRollbackRetryCount() + 1);
+                context.setRollbackScanCount(context.getRollbackScanCount() + 1);
                 context.setState(MiningState.FINDING_BLOCK);
                 notificationService.sendMessage("§e检测到回滚，重新挖掘位置: " + pos.getX() + "," + pos.getY() + "," + pos.getZ());
                 return;

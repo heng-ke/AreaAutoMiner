@@ -11,7 +11,6 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.chunk.ChunkCache;
 import xyz.hengke.areaautominer.config.MiningConfig;
 import xyz.hengke.areaautominer.context.MiningContext;
-import xyz.hengke.areaautominer.service.NotificationService;
 
 import java.util.Set;
 
@@ -41,7 +40,6 @@ public class PathfindingHelper {
     private static final int MIN_CACHE_RADIUS = 16;
 
     private final MiningContext context;
-    private final NotificationService notificationService;
 
     /** 复用的临时虚拟实体，定位到玩家位置用于寻路计算，不加入世界、不 tick */
     private MobEntity phantomMob;
@@ -50,9 +48,8 @@ public class PathfindingHelper {
     private PathNodeNavigator navigator;
     private int currentRange;
 
-    public PathfindingHelper(MiningContext context, NotificationService notificationService) {
+    public PathfindingHelper(MiningContext context) {
         this.context = context;
-        this.notificationService = notificationService;
     }
 
     /**
@@ -94,13 +91,10 @@ public class PathfindingHelper {
         nodeMaker.init(cache, mob);
 
         // 5) 执行 A* 寻路
-        Path path = navigator.findPathToAny(
+        // 失败原因（区块未加载 / 不可达）由 MovementHelper 按 isPosLoaded 区分并打印重试信息，
+        // 此处不重复打印，避免同一事件输出两行
+        return navigator.findPathToAny(
                 cache, mob, Set.of(target), (float) followRange, PATH_DISTANCE, RANGE_MULTIPLIER);
-
-        if (path == null) {
-            notificationService.logDebug("vanilla 寻路失败（不可达或区块未加载）: " + target);
-        }
-        return path;
     }
 
     /**

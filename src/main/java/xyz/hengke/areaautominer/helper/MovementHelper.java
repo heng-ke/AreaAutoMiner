@@ -26,7 +26,7 @@ public class MovementHelper {
     // 终点到达判定：玩家距目标方块 XZ 中心足够近，可开始转向（方块+玩家碰撞框的大约距离）
     private static final double CLOSE_ENOUGH_DISTANCE = 1.5;
     // 中间路径节点到达判定：距当前节点 XZ 中心小于此值即前进到下一节点
-    private static final double NODE_ARRIVE_THRESHOLD = 1.0;
+    private static final double NODE_ARRIVE_THRESHOLD = 1.5;
     // 行走重试延迟（负值表示从0开始反向计数10 tick再开始，即给予10 tick的宽限时间）
     private static final int WALK_RETRY_DELAY_TICKS = -10;
     // 跳跃后的冷却时间（tick），防止连续跳跃
@@ -35,8 +35,10 @@ public class MovementHelper {
     private static final int JUMP_COOLDOWN_RETRY_TICKS = 15;
     // 每 tick 最大的视角 Y 轴旋转步数（度），限制转向速度以模拟自然视角（指数平滑的硬上限保护）
     private static final float MAX_YAW_STEP = 15.0f;
-    // 指数平滑因子：每 tick 修正 yaw 偏差的比例（0.4=快，0.2=慢而平滑）
-    private static final float YAW_EMA_FACTOR = 0.35f;
+    // 指数平滑因子：每 tick 修正 yaw 偏差的比例（0.9 时前进阶段曲率半径≈0.92格，小于节点到达阈值，避免圆弧绕圈）
+    private static final float YAW_EMA_FACTOR = 0.9f;
+    // 朝向与节点偏差超过此角度时只原地转向、不前进（转向/前进解耦，从机制上消除绕圈）
+    private static final float TURN_BEFORE_WALK_THRESHOLD = 30.0f;
 
     private final MiningContext context;
     private final InputHelper inputHelper;
@@ -131,7 +133,7 @@ public class MovementHelper {
                     notificationService.logDebug("跳跃到目标方块顶部");
                     return;
                 } else if (!hasSpaceOnTop) {
-                    notificationService.logDebug("目标方块上方没有足够空间，尝试直接挖掘");
+                    notificationService.logDebug("目标方块上方没有足够空间，改为站旁转向后挖掘");
                 }
             }
             arriveAndFace(targetPos);
@@ -181,6 +183,17 @@ public class MovementHelper {
         float clampedDiff = Math.max(-MAX_YAW_STEP, Math.min(MAX_YAW_STEP, yawDiff));
         float smoothedYaw = client.player.getYaw() + clampedDiff * YAW_EMA_FACTOR;
         client.player.setYaw(smoothedYaw);
+
+        // 大角度偏差：先原地转向对准节点，再前进（避免转向慢+前进快导致的圆弧绕圈）。
+        // 原地转向期间同步卡住锚点并清零卡住计数，防止误判卡住
+        if (Math.abs(yawDiff) > TURN_BEFORE_WALK_THRESHOLD) {
+            inputHelper.setKeyPressed(client.options.forwardKey, false);
+            inputHelper.setKeyPressed(client.options.jumpKey, false);
+            context.setStuckCounter(0);
+            context.setLastPlayerX(client.player.getX());
+            context.setLastPlayerZ(client.player.getZ());
+            return;
+        }
 
         // 跳跃判定：当前节点高于玩家方块 Y（上坡/上台阶）且 onGround
         boolean needJump = nodePos.getY() > client.player.getBlockPos().getY()

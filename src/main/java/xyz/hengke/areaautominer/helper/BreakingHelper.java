@@ -17,13 +17,15 @@ public class BreakingHelper {
     private final NotificationService notificationService;
     private final MiningCompletionService completionService;
     private final InputHelper inputHelper;
+    private final CameraHelper cameraHelper;
 
-    public BreakingHelper(MiningContext context, AreaIterator areaIterator, NotificationService notificationService, MiningCompletionService completionService, InputHelper inputHelper) {
+    public BreakingHelper(MiningContext context, AreaIterator areaIterator, NotificationService notificationService, MiningCompletionService completionService, InputHelper inputHelper, CameraHelper cameraHelper) {
         this.context = context;
         this.areaIterator = areaIterator;
         this.notificationService = notificationService;
         this.completionService = completionService;
         this.inputHelper = inputHelper;
+        this.cameraHelper = cameraHelper;
     }
 
     // 挖掘时视角重对准阈值（度），偏差超过此值则中断挖掘重新转向
@@ -59,19 +61,7 @@ public class BreakingHelper {
             return;
         }
 
-        double targetX = context.getCurrentX() + 0.5;
-        double targetY = context.getCurrentY() + 0.5;
-        double targetZ = context.getCurrentZ() + 0.5;
-        double playerX = client.player.getX();
-        double playerY = client.player.getY() + client.player.getEyeHeight(client.player.getPose());
-        double playerZ = client.player.getZ();
-        double horizontalDistanceSquared = SpatialHelper.calculateHorizontalDistanceSquared(playerX, playerZ, targetX, targetZ);
-        double verticalDistance = Math.abs(playerY - targetY);
-
-        boolean withinHorizontalRange = horizontalDistanceSquared <= config.getMaxReachSquared();
-        boolean withinVerticalRange = verticalDistance <= config.getMaxVerticalDistance();
-
-        if (!withinHorizontalRange || !withinVerticalRange || !SpatialHelper.hasLineOfSightToAnyFace(client, targetPos)) {
+        if (!SpatialHelper.isBlockWithinReach(client, targetPos, config)) {
             context.startWalkingToBlock();
             notificationService.logDebug("挖掘时超出范围或无视线，重新行走");
             return;
@@ -82,8 +72,8 @@ public class BreakingHelper {
         float pitchDiff = Math.abs(context.getTargetPitch() - client.player.getPitch());
 
         if (Math.abs(yawDiff) > FACING_RE_THRESHOLD_DEGREES || pitchDiff > FACING_RE_THRESHOLD_DEGREES) {
-            // 不设 waitTicks/initialWaitTicks：让 faceBlock 的 initTurningParameters 自动处理，
-            // 避免 faceStartYaw 过时导致跳变（initTurningParameters 会根据偏差自适应 waitTicks）
+            // 显式开始一次转向会话：追踪器从当前真实视角开始逼近，无残留状态
+            cameraHelper.beginFacing();
             context.setAdjacentBlock(true);
             context.setState(MiningState.FACING_BLOCK);
             notificationService.logDebug("挖掘时视角偏移过大，重新转向");
@@ -108,12 +98,25 @@ public class BreakingHelper {
         if (gameMode == GameMode.CREATIVE) {
             client.interactionManager.breakBlock(targetPos);
             client.player.swingHand(net.minecraft.util.Hand.MAIN_HAND);
-            completionService.onBlockMined(targetPos);
-            if (!areaIterator.advancePosition()) {
-                completionService.completeMining();
-                return;
+
+            // 创造模式 breakBlock 返回 true/false 表示是否成功；需要确认方块已被破坏
+            if (client.world.getBlockState(targetPos).isAir()) {
+                completionService.onBlockMined(targetPos);
+                notificationService.logDebug("方块挖掘完成（创造模式）");
+                if (!areaIterator.advancePosition()) {
+                    completionService.completeMining();
+                    return;
+                }
+                context.setState(MiningState.FINDING_BLOCK);
+            } else {
+                // 基岩/屏障等不可破坏方块，跳过
+                completionService.onBlockSkipped(targetPos);
+                if (!areaIterator.advancePosition()) {
+                    completionService.completeMining();
+                    return;
+                }
+                context.setState(MiningState.FINDING_BLOCK);
             }
-            context.setState(MiningState.FINDING_BLOCK);
         } else {
             ItemStack toolStack = context.getClient().player.getStackInHand(net.minecraft.util.Hand.MAIN_HAND);
             if (toolStack.isDamageable() && toolStack.getMaxDamage() > 0) {

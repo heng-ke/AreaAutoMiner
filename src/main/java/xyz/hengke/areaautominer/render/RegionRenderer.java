@@ -15,15 +15,38 @@ public class RegionRenderer {
 
     public static void renderRegion(WorldRenderContext context, BlockPos pos1, BlockPos pos2) {
         if (pos1 == null || pos2 == null) return;
+
+        Box selectionBox = new Box(
+                Math.min(pos1.getX(), pos2.getX()),
+                Math.min(pos1.getY(), pos2.getY()),
+                Math.min(pos1.getZ(), pos2.getZ()),
+                Math.max(pos1.getX(), pos2.getX()) + 1,
+                Math.max(pos1.getY(), pos2.getY()) + 1,
+                Math.max(pos1.getZ(), pos2.getZ()) + 1
+        );
+        renderBoxOutline(context, selectionBox, 0.0f, 1.0f, 0.0f, 1.0f);
+    }
+
+    /** 绘制当前挖掘目标方块的红色边框（挖掘进行中时由客户端每帧调用） */
+    public static void renderTargetBlock(WorldRenderContext context, BlockPos pos) {
+        if (pos == null) return;
+        renderBoxOutline(context, new Box(
+                pos.getX(), pos.getY(), pos.getZ(),
+                pos.getX() + 1.0, pos.getY() + 1.0, pos.getZ() + 1.0),
+                1.0f, 0.0f, 0.0f, 1.0f);
+    }
+
+    private static void renderBoxOutline(WorldRenderContext context, Box box,
+                                         float red, float green, float blue, float alpha) {
         if (context.consumers() == null) return;
 
         MinecraftClient client = MinecraftClient.getInstance();
         Camera camera = client.gameRenderer.getCamera();
         Vec3d cameraPos = camera.getCameraPos();
 
-        double centerX = (double) (pos1.getX() + pos2.getX()) / 2.0;
-        double centerY = (double) (pos1.getY() + pos2.getY()) / 2.0;
-        double centerZ = (double) (pos1.getZ() + pos2.getZ()) / 2.0;
+        double centerX = (box.minX + box.maxX) / 2.0;
+        double centerY = (box.minY + box.maxY) / 2.0;
+        double centerZ = (box.minZ + box.maxZ) / 2.0;
 
         double distanceSquared = cameraPos.squaredDistanceTo(centerX, centerY, centerZ);
         if (distanceSquared > MAX_RENDER_DISTANCE * MAX_RENDER_DISTANCE) {
@@ -34,17 +57,8 @@ public class RegionRenderer {
         matrices.push();
         matrices.translate(-cameraPos.x, -cameraPos.y, -cameraPos.z);
 
-        Box selectionBox = new Box(
-                Math.min(pos1.getX(), pos2.getX()),
-                Math.min(pos1.getY(), pos2.getY()),
-                Math.min(pos1.getZ(), pos2.getZ()),
-                Math.max(pos1.getX(), pos2.getX()) + 1,
-                Math.max(pos1.getY(), pos2.getY()) + 1,
-                Math.max(pos1.getZ(), pos2.getZ()) + 1
-        );
-
         VertexConsumer vertexConsumer = context.consumers().getBuffer(RenderLayers.lines());
-        drawBoxOutline(matrices, vertexConsumer, selectionBox, 0.0f, 1.0f, 0.0f, 1.0f);
+        drawBoxOutline(matrices, vertexConsumer, box, red, green, blue, alpha);
 
         matrices.pop();
     }

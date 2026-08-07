@@ -5,6 +5,7 @@ import net.minecraft.util.math.BlockPos;
 import xyz.hengke.areaautominer.config.MiningConfig;
 import xyz.hengke.areaautominer.context.MiningContext;
 import xyz.hengke.areaautominer.helper.InputHelper;
+import xyz.hengke.areaautominer.helper.PathfindingHelper;
 import xyz.hengke.areaautominer.model.MiningState;
 
 import java.util.Set;
@@ -14,12 +15,14 @@ public class MiningCompletionService {
     private final InputHelper inputHelper;
     private final NotificationService notificationService;
     private final MiningConfig config;
+    private final PathfindingHelper pathfindingHelper;
 
-    public MiningCompletionService(MiningContext context, InputHelper inputHelper, NotificationService notificationService) {
+    public MiningCompletionService(MiningContext context, InputHelper inputHelper, NotificationService notificationService, PathfindingHelper pathfindingHelper) {
         this.context = context;
         this.inputHelper = inputHelper;
         this.notificationService = notificationService;
         this.config = MiningConfig.getInstance();
+        this.pathfindingHelper = pathfindingHelper;
     }
 
     public void completeMining() {
@@ -47,6 +50,7 @@ public class MiningCompletionService {
         context.setMining(false);
         context.setState(MiningState.IDLE);
         inputHelper.releaseAllKeys();
+        pathfindingHelper.cleanup();  // 清理寻路资源（虚拟实体/导航器）
 
         if (context.getRollbackRetryCount() > 0) {
             notificationService.sendMessage("§a挖掘完成（已处理 " + context.getRollbackRetryCount() + " 次回滚）");

@@ -12,8 +12,6 @@ import xyz.hengke.areaautominer.service.MiningCompletionService;
 import xyz.hengke.areaautominer.service.NotificationService;
 
 public class BlockFinder {
-    private static final float FACING_THRESHOLD_DEGREES = 5.0F;
-
     private final MiningContext context;
     private final AreaIterator areaIterator;
     private final CameraHelper cameraHelper;
@@ -42,33 +40,14 @@ public class BlockFinder {
             targetPos = areaIterator.getCurrentPos();
             airSkipCount++;
             if (airSkipCount >= config.getMaxAirSkipPerTick()) {
+                notificationService.logDebug("本 tick 跳过 " + airSkipCount + " 个空气方块，未找到目标，下 tick 继续");
                 return;
             }
         }
 
-        double targetX = context.getCurrentX() + 0.5;
-        double targetY = context.getCurrentY() + 0.5;
-        double targetZ = context.getCurrentZ() + 0.5;
-
-        double playerX = client.player.getX();
-        double playerY = client.player.getY() + client.player.getEyeHeight(client.player.getPose());
-        double playerZ = client.player.getZ();
-
-        double horizontalDistanceSquared = SpatialHelper.calculateHorizontalDistanceSquared(playerX, playerZ, targetX, targetZ);
-        double verticalDistance = Math.abs(playerY - targetY);
-
-        boolean withinHorizontalRange = horizontalDistanceSquared <= config.getMaxReachSquared();
-        boolean withinVerticalRange = verticalDistance <= config.getMaxVerticalDistance();
-
-        if (!withinHorizontalRange || !withinVerticalRange) {
+        if (!SpatialHelper.isBlockWithinReach(client, targetPos, config)) {
             context.startWalkingToBlock();
-            notificationService.logDebug("超出挖掘范围，开始行走");
-            return;
-        }
-
-        if (!SpatialHelper.hasLineOfSightToAnyFace(client, targetPos)) {
-            context.startWalkingToBlock();
-            notificationService.logDebug("无视线，开始行走");
+            notificationService.logDebug("超出挖掘范围或无视线，开始行走");
             return;
         }
 
@@ -80,19 +59,18 @@ public class BlockFinder {
         float yawDiff = SpatialHelper.normalizeYawDiff(context.getTargetYaw() - currentYaw);
         float pitchDiff = Math.abs(context.getTargetPitch() - client.player.getPitch());
 
-        if (Math.abs(yawDiff) < FACING_THRESHOLD_DEGREES && pitchDiff < FACING_THRESHOLD_DEGREES) {
+        if (Math.abs(yawDiff) < SpatialHelper.FACING_THRESHOLD_DEGREES && pitchDiff < SpatialHelper.FACING_THRESHOLD_DEGREES) {
             context.setFirstBreakTick(true);
+            context.setBreakTicks(0);
             context.setState(MiningState.BREAKING);
             notificationService.logDebug("已对准，直接挖掘");
             return;
         }
 
-        // 不设 waitTicks/initialWaitTicks：此时 waitTicks=0（上一轮 faceBlock 完成时归零），
-        // faceBlock 的 initTurningParameters 守卫（waitTicks<=0）会自动设置
-        // faceStartYaw=currentYaw 并计算自适应 waitTicks，避免 faceStartYaw 过时导致跳变
-        context.setFacingRetryCount(0);
+        // 显式开始一次转向会话：释放按键并重置会话计数，追踪器从当前真实视角开始逼近
+        cameraHelper.beginFacing();
         context.setState(MiningState.FACING_BLOCK);
-        // waitTicks 由 faceBlock 的 initTurningParameters 在下 tick 自动设置，此处尚未计算
-        notificationService.logDebug("开始转向，需要转动: " + Math.round(Math.abs(yawDiff)) + "度");
+        notificationService.logDebug("开始转向，需要转动: yaw " + Math.round(Math.abs(yawDiff))
+                + "度 / pitch " + Math.round(pitchDiff) + "度");
     }
 }

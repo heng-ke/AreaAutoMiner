@@ -3,22 +3,45 @@ package xyz.hengke.areaautominer.helper;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
+import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.RaycastContext;
+import xyz.hengke.areaautominer.config.MiningConfig;
 import xyz.hengke.areaautominer.context.MiningContext;
 
 public class SpatialHelper {
+    // 视角转向完成/判定阈值（度），BlockFinder 和 CameraHelper 共用
+    public static final float FACING_THRESHOLD_DEGREES = 5.0F;
 
     public static float normalizeYawDiff(float yawDiff) {
-        while (yawDiff < -180.0F) yawDiff += 360.0F;
-        while (yawDiff > 180.0F) yawDiff -= 360.0F;
-        return yawDiff;
+        return MathHelper.wrapDegrees(yawDiff);
     }
 
     public static double calculateHorizontalDistanceSquared(double playerX, double playerZ, double targetX, double targetZ) {
         double dx = playerX - targetX;
         double dz = playerZ - targetZ;
         return dx * dx + dz * dz;
+    }
+
+    /**
+     * 检查玩家是否在目标方块的挖掘范围内（水平距离 + 垂直距离 + 视线）
+     * @return true 表示可直接挖掘
+     */
+    public static boolean isBlockWithinReach(MinecraftClient client, BlockPos targetPos, MiningConfig config) {
+        double targetX = targetPos.getX() + 0.5;
+        double targetY = targetPos.getY() + 0.5;
+        double targetZ = targetPos.getZ() + 0.5;
+        double playerX = client.player.getX();
+        double playerY = client.player.getY() + client.player.getEyeHeight(client.player.getPose());
+        double playerZ = client.player.getZ();
+
+        double horizontalDistanceSquared = calculateHorizontalDistanceSquared(playerX, playerZ, targetX, targetZ);
+        double verticalDistance = Math.abs(playerY - targetY);
+
+        boolean withinHorizontalRange = horizontalDistanceSquared <= config.getMaxReachSquared();
+        boolean withinVerticalRange = verticalDistance <= config.getMaxVerticalDistance();
+
+        return withinHorizontalRange && withinVerticalRange && hasLineOfSightToAnyFace(client, targetPos);
     }
 
     public static Direction calculateDirection(MinecraftClient client, BlockPos targetPos) {
@@ -37,35 +60,6 @@ public class SpatialHelper {
         } else {
             return dz > 0 ? Direction.SOUTH : Direction.NORTH;
         }
-    }
-
-    public static boolean hasLineOfSight(MinecraftClient client, BlockPos targetPos) {
-        Vec3d eyePos = new Vec3d(
-                client.player.getX(),
-                client.player.getY() + client.player.getEyeHeight(client.player.getPose()),
-                client.player.getZ()
-        );
-        Vec3d targetVec = new Vec3d(
-                targetPos.getX() + 0.5,
-                targetPos.getY() + 0.5,
-                targetPos.getZ() + 0.5
-        );
-
-        net.minecraft.util.hit.BlockHitResult hitResult = client.world.raycast(
-                new RaycastContext(
-                        eyePos,
-                        targetVec,
-                        RaycastContext.ShapeType.OUTLINE,
-                        RaycastContext.FluidHandling.NONE,
-                        client.player
-                )
-        );
-
-        if (hitResult.getType() == net.minecraft.util.hit.HitResult.Type.MISS) {
-            return true;
-        }
-
-        return hitResult.getBlockPos().equals(targetPos);
     }
 
     public static boolean hasLineOfSightToAnyFace(MinecraftClient client, BlockPos targetPos) {
