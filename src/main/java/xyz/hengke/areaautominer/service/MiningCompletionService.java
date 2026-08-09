@@ -3,43 +3,52 @@ package xyz.hengke.areaautominer.service;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.util.math.BlockPos;
 import xyz.hengke.areaautominer.config.MiningConfig;
-import xyz.hengke.areaautominer.context.MiningContext;
-import xyz.hengke.areaautominer.helper.InputHelper;
-import xyz.hengke.areaautominer.helper.PathfindingHelper;
+import xyz.hengke.areaautominer.context.state.BreakingState;
+import xyz.hengke.areaautominer.context.state.RollbackState;
+import xyz.hengke.areaautominer.context.state.SessionState;
+import xyz.hengke.areaautominer.lifecycle.SessionLifecycle;
 import xyz.hengke.areaautominer.model.MiningState;
 
-import java.util.Set;
-
+/**
+ * 挖掘完成与方块事件：回滚校验、完成收尾、已挖/跳过事件。
+ * 依赖的状态对象:RollbackState(回滚计数/已挖集合)、SessionState(会话/监听器)、BreakingState(最近挖掉方块)。
+ */
 public class MiningCompletionService {
-    private final MiningContext context;
-    private final InputHelper inputHelper;
-    private final NotificationService notificationService;
+    private final MinecraftClient client;
     private final MiningConfig config;
-    private final PathfindingHelper pathfindingHelper;
+    private final RollbackState rollback;
+    private final SessionState session;
+    private final BreakingState breaking;
+    private final NotificationService notificationService;
+    private final SessionLifecycle lifecycle;
 
-    public MiningCompletionService(MiningContext context, InputHelper inputHelper, NotificationService notificationService, PathfindingHelper pathfindingHelper) {
-        this.context = context;
-        this.inputHelper = inputHelper;
+    public MiningCompletionService(MinecraftClient client, MiningConfig config,
+                                   RollbackState rollback, SessionState session, BreakingState breaking,
+                                   NotificationService notificationService, SessionLifecycle lifecycle) {
+        this.client = client;
+        this.config = config;
+        this.rollback = rollback;
+        this.session = session;
+        this.breaking = breaking;
         this.notificationService = notificationService;
-        this.config = MiningConfig.getInstance();
-        this.pathfindingHelper = pathfindingHelper;
+        this.lifecycle = lifecycle;
     }
 
     public void completeMining() {
-        if (!config.isRollbackDetectionEnabled()) {
+        if (!config.enableRollbackDetection) {
             forceCompleteMining();
             return;
         }
 
-        if (context.getRollbackRetryCount() >= config.getMaxRollbackRetries()) {
+        if (rollback.getRollbackRetryCount() >= config.maxRollbackRetries) {
             forceCompleteMining();
             return;
         }
 
         if (!verifyAllBlocksMined()) {
-            context.setRollbackRetryCount(context.getRollbackRetryCount() + 1);
-            notificationService.sendMessage("§e检测到回滚遗漏，重新挖掘...");
-            context.setState(MiningState.FINDING_BLOCK);
+            rollback.setRollbackRetryCount(rollback.getRollbackRetryCount() + 1);
+            notificationService.sendMessage(Messages.ROLLBACK_MISS_RESCAN);
+            session.setState(MiningState.FINDING_BLOCK);
             return;
         }
 
@@ -47,29 +56,23 @@ public class MiningCompletionService {
     }
 
     private void forceCompleteMining() {
-        context.setMining(false);
-        context.setState(MiningState.IDLE);
-        inputHelper.releaseAllKeys();
-        pathfindingHelper.cleanup();  // 清理寻路资源（虚拟实体/导航器）
+        lifecycle.teardown();  // 与 stopMining() 共用同一收尾出口
 
-        if (context.getRollbackRetryCount() > 0) {
-            notificationService.sendMessage("§a挖掘完成（已处理 " + context.getRollbackRetryCount() + " 次回滚）");
+        if (rollback.getRollbackRetryCount() > 0) {
+            notificationService.sendMessage(String.format(Messages.MINING_COMPLETE_WITH_ROLLBACK, rollback.getRollbackRetryCount()));
         } else {
-            notificationService.sendMessage("§a挖掘完成！");
+            notificationService.sendMessage(Messages.MINING_COMPLETE);
         }
 
-        context.setRollbackRetryCount(0);
+        rollback.setRollbackRetryCount(0);
 
-        if (context.getListener() != null) {
-            context.getListener().onMineComplete();
+        if (session.getListener() != null) {
+            session.getListener().onMineComplete();
         }
     }
 
     public boolean verifyAllBlocksMined() {
-        MinecraftClient client = context.getClient();
-        Set<BlockPos> minedPositions = context.getMinedPositions();
-
-        for (BlockPos pos : minedPositions) {
+        for (BlockPos pos : rollback.getMinedPositions()) {
             if (!client.world.getBlockState(pos).isAir()) {
                 return false;
             }
@@ -78,17 +81,17 @@ public class MiningCompletionService {
     }
 
     public void onBlockSkipped(BlockPos pos) {
-        if (context.getListener() != null) {
-            context.getListener().onBlockSkipped(pos);
+        if (session.getListener() != null) {
+            session.getListener().onBlockSkipped(pos);
         }
-        notificationService.sendMessage("§e跳过方块: " + pos.getX() + "," + pos.getY() + "," + pos.getZ());
+        notificationService.sendMessage(String.format(Messages.BLOCK_SKIPPED, pos.getX(), pos.getY(), pos.getZ()));
     }
 
     public void onBlockMined(BlockPos pos) {
-        context.setLastMinedPos(new BlockPos(pos));
-        context.addMinedPosition(pos);
-        if (context.getListener() != null) {
-            context.getListener().onBlockMined(pos);
+        breaking.setLastMinedPos(new BlockPos(pos));
+        rollback.addMinedPosition(pos, config.maxMinedPositions);
+        if (session.getListener() != null) {
+            session.getListener().onBlockMined(pos);
         }
     }
 }

@@ -1,18 +1,15 @@
 package xyz.hengke.areaautominer.helper;
 
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.registry.tag.FluidTags;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.RaycastContext;
 import xyz.hengke.areaautominer.config.MiningConfig;
-import xyz.hengke.areaautominer.context.MiningContext;
 
 public class SpatialHelper {
-    // 视角转向完成/判定阈值（度），BlockFinder 和 CameraHelper 共用
-    public static final float FACING_THRESHOLD_DEGREES = 5.0F;
-
     public static float normalizeYawDiff(float yawDiff) {
         return MathHelper.wrapDegrees(yawDiff);
     }
@@ -21,6 +18,14 @@ public class SpatialHelper {
         double dx = playerX - targetX;
         double dz = playerZ - targetZ;
         return dx * dx + dz * dz;
+    }
+
+    /**
+     * 计算从 (fromX, fromZ) 水平看向 (toX, toZ) 的 yaw 角（度，与 Minecraft yaw 约定一致）。
+     * MovementHelper 与 CameraHelper 共用，避免两处重复的 atan2 换算。
+     */
+    public static float calculateYawTo(double fromX, double fromZ, double toX, double toZ) {
+        return (float) Math.atan2(toZ - fromZ, toX - fromX) * (180.0F / (float) Math.PI) - 90.0F;
     }
 
     /**
@@ -38,8 +43,8 @@ public class SpatialHelper {
         double horizontalDistanceSquared = calculateHorizontalDistanceSquared(playerX, playerZ, targetX, targetZ);
         double verticalDistance = Math.abs(playerY - targetY);
 
-        boolean withinHorizontalRange = horizontalDistanceSquared <= config.getMaxReachSquared();
-        boolean withinVerticalRange = verticalDistance <= config.getMaxVerticalDistance();
+        boolean withinHorizontalRange = horizontalDistanceSquared <= config.maxReachSquared;
+        boolean withinVerticalRange = verticalDistance <= config.maxVerticalDistance;
 
         return withinHorizontalRange && withinVerticalRange && hasLineOfSightToAnyFace(client, targetPos);
     }
@@ -129,11 +134,21 @@ public class SpatialHelper {
         return new Vec3d(x, y, z);
     }
 
-    public static boolean isAdjacentToLast(MiningContext context, BlockPos pos) {
-        if (context.getLastMinedPos() == null) return false;
-        int dx = Math.abs(pos.getX() - context.getLastMinedPos().getX());
-        int dy = Math.abs(pos.getY() - context.getLastMinedPos().getY());
-        int dz = Math.abs(pos.getZ() - context.getLastMinedPos().getZ());
-        return dx + dy + dz == 1;
+    /**
+     * 玩家周围是否有岩浆（站立层 XZ 3×3 + 脚下 1 格）。
+     * MovementHelper 行走与 BreakingHelper 挖掘共用，避免两处判定不一致。
+     */
+    public static boolean isLavaAroundPlayer(MinecraftClient client) {
+        if (client.world == null || client.player == null) return false;
+        BlockPos playerPos = client.player.getBlockPos();
+        // 脚下
+        if (client.world.getFluidState(playerPos.down()).isIn(FluidTags.LAVA)) return true;
+        // 站立层周围 3×3（含正下方格子对应的站立层）
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                if (client.world.getFluidState(playerPos.add(dx, 0, dz)).isIn(FluidTags.LAVA)) return true;
+            }
+        }
+        return false;
     }
 }

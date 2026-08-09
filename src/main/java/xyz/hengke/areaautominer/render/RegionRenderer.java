@@ -5,13 +5,26 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.Camera;
 import net.minecraft.client.render.RenderLayers;
 import net.minecraft.client.render.VertexConsumer;
+import net.minecraft.client.render.VertexRendering;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
+import net.minecraft.util.shape.VoxelShapes;
 
+/**
+ * 选区 / 目标方块线框渲染。
+ * 线框绘制复用 vanilla {@link VertexRendering#drawOutline}（1.21.11 中旧 drawBox 的更名版），
+ * 不再手写 12 条边线。
+ */
 public class RegionRenderer {
     private static final float MAX_RENDER_DISTANCE = 256.0f;
+    /** 线框线宽（与原版方块选中框一致） */
+    private static final float OUTLINE_WIDTH = 2.0f;
+    /** 选区绿色（ARGB） */
+    private static final int REGION_COLOR = 0xFF00FF00;
+    /** 目标方块红色（ARGB） */
+    private static final int TARGET_COLOR = 0xFFFF0000;
 
     public static void renderRegion(WorldRenderContext context, BlockPos pos1, BlockPos pos2) {
         if (pos1 == null || pos2 == null) return;
@@ -24,7 +37,7 @@ public class RegionRenderer {
                 Math.max(pos1.getY(), pos2.getY()) + 1,
                 Math.max(pos1.getZ(), pos2.getZ()) + 1
         );
-        renderBoxOutline(context, selectionBox, 0.0f, 1.0f, 0.0f, 1.0f);
+        renderBoxOutline(context, selectionBox, REGION_COLOR);
     }
 
     /** 绘制当前挖掘目标方块的红色边框（挖掘进行中时由客户端每帧调用） */
@@ -33,11 +46,10 @@ public class RegionRenderer {
         renderBoxOutline(context, new Box(
                 pos.getX(), pos.getY(), pos.getZ(),
                 pos.getX() + 1.0, pos.getY() + 1.0, pos.getZ() + 1.0),
-                1.0f, 0.0f, 0.0f, 1.0f);
+                TARGET_COLOR);
     }
 
-    private static void renderBoxOutline(WorldRenderContext context, Box box,
-                                         float red, float green, float blue, float alpha) {
+    private static void renderBoxOutline(WorldRenderContext context, Box box, int color) {
         if (context.consumers() == null) return;
 
         MinecraftClient client = MinecraftClient.getInstance();
@@ -58,51 +70,8 @@ public class RegionRenderer {
         matrices.translate(-cameraPos.x, -cameraPos.y, -cameraPos.z);
 
         VertexConsumer vertexConsumer = context.consumers().getBuffer(RenderLayers.lines());
-        drawBoxOutline(matrices, vertexConsumer, box, red, green, blue, alpha);
+        VertexRendering.drawOutline(matrices, vertexConsumer, VoxelShapes.cuboid(box), 0, 0, 0, color, OUTLINE_WIDTH);
 
         matrices.pop();
-    }
-
-    private static void drawBoxOutline(MatrixStack matrices, VertexConsumer vertexConsumer, Box box,
-                                       float red, float green, float blue, float alpha) {
-        float minX = (float) box.minX;
-        float minY = (float) box.minY;
-        float minZ = (float) box.minZ;
-        float maxX = (float) box.maxX;
-        float maxY = (float) box.maxY;
-        float maxZ = (float) box.maxZ;
-
-        addLine(matrices, vertexConsumer, minX, minY, minZ, maxX, minY, minZ, red, green, blue, alpha);
-        addLine(matrices, vertexConsumer, maxX, minY, minZ, maxX, minY, maxZ, red, green, blue, alpha);
-        addLine(matrices, vertexConsumer, maxX, minY, maxZ, minX, minY, maxZ, red, green, blue, alpha);
-        addLine(matrices, vertexConsumer, minX, minY, maxZ, minX, minY, minZ, red, green, blue, alpha);
-
-        addLine(matrices, vertexConsumer, minX, maxY, minZ, maxX, maxY, minZ, red, green, blue, alpha);
-        addLine(matrices, vertexConsumer, maxX, maxY, minZ, maxX, maxY, maxZ, red, green, blue, alpha);
-        addLine(matrices, vertexConsumer, maxX, maxY, maxZ, minX, maxY, maxZ, red, green, blue, alpha);
-        addLine(matrices, vertexConsumer, minX, maxY, maxZ, minX, maxY, minZ, red, green, blue, alpha);
-
-        addLine(matrices, vertexConsumer, minX, minY, minZ, minX, maxY, minZ, red, green, blue, alpha);
-        addLine(matrices, vertexConsumer, maxX, minY, minZ, maxX, maxY, minZ, red, green, blue, alpha);
-        addLine(matrices, vertexConsumer, maxX, minY, maxZ, maxX, maxY, maxZ, red, green, blue, alpha);
-        addLine(matrices, vertexConsumer, minX, minY, maxZ, minX, maxY, maxZ, red, green, blue, alpha);
-    }
-
-    private static void addLine(MatrixStack matrices, VertexConsumer vertexConsumer,
-                                float x1, float y1, float z1,
-                                float x2, float y2, float z2,
-                                float red, float green, float blue, float alpha) {
-        MatrixStack.Entry entry = matrices.peek();
-        float dx = x2 - x1;
-        float dy = y2 - y1;
-        float dz = z2 - z1;
-        float length = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
-        if (length > 0.0001f) {
-            dx /= length;
-            dy /= length;
-            dz /= length;
-        }
-        vertexConsumer.vertex(entry, x1, y1, z1).color(red, green, blue, alpha).normal(dx, dy, dz).lineWidth(2.0f);
-        vertexConsumer.vertex(entry, x2, y2, z2).color(red, green, blue, alpha).normal(dx, dy, dz).lineWidth(2.0f);
     }
 }

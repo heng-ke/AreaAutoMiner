@@ -1,4 +1,0 @@
-accessWidener	v1	named
-
-accessible	class	net/minecraft/client/option/KeyBinding
-accessible	method	net/minecraft/client/option/KeyBinding	setPressed	(Z)V

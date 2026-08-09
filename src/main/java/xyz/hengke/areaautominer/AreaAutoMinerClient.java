@@ -2,67 +2,47 @@ package xyz.hengke.areaautominer;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderContext;
 import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
 import net.fabricmc.fabric.api.event.player.UseItemCallback;
-import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.text.Text;
-import net.minecraft.util.ActionResult;
-import net.minecraft.util.Hand;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.hit.HitResult;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.World;
+import net.minecraft.client.option.KeyBinding;
+import net.minecraft.client.util.InputUtil;
 import org.lwjgl.glfw.GLFW;
+import xyz.hengke.areaautominer.client.LifecycleManager;
+import xyz.hengke.areaautominer.client.SelectionTool;
+import xyz.hengke.areaautominer.config.MiningConfigHolder;
 import xyz.hengke.areaautominer.controller.MiningController;
-import xyz.hengke.areaautominer.listener.MiningListener;
+import xyz.hengke.areaautominer.di.MinerComponents;
 import xyz.hengke.areaautominer.render.RegionRenderer;
 
+/**
+ * 客户端入口：只负责注册事件与分发。
+ * 业务逻辑已下沉到 SelectionTool（选区）/ LifecycleManager（死亡与暂停检测）/ MiningController（状态机）。
+ */
 public class AreaAutoMinerClient implements ClientModInitializer {
-    private BlockPos pos1 = null, pos2 = null;
-    private boolean kPressedLastTick = false;
+    /** 开始 / 停止挖掘的快捷键，可在游戏内「选项 → 控制」中重新绑定 */
+    private static final KeyBinding TOGGLE_KEY = KeyBindingHelper.registerKeyBinding(
+            new KeyBinding("key.areaautominer.toggle", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_K, KeyBinding.Category.GAMEPLAY));
+
+    private SelectionTool selectionTool;
+    private LifecycleManager lifecycleManager;
     private MiningController miningController;
-    private boolean swordUsedThisTick = false;
-    private enum LifeCycleState {
-        ALIVE,
-        DEAD,
-        PAUSED
-    }
-    private LifeCycleState lifeCycleState = LifeCycleState.ALIVE;
 
     @Override
     public void onInitializeClient() {
-        miningController = new MiningController(MinecraftClient.getInstance());
-        miningController.setListener(new MiningListener() {
-            @Override
-            public void onMineComplete() {
-                // 通知已由 MiningCompletionService.forceCompleteMining() 统一发送，避免重复
-            }
-
-            @Override
-            public void onBlockSkipped(BlockPos pos) {
-            }
-
-            @Override
-            public void onBlockMined(BlockPos pos) {
-            }
-
-            @Override
-            public void onStartMining(BlockPos pos1, BlockPos pos2) {
-            }
-
-            @Override
-            public void onStopMining() {
-            }
-        });
+        MinerComponents components = new MinerComponents(MinecraftClient.getInstance());
+        miningController = components.controller();
+        selectionTool = new SelectionTool(MiningConfigHolder.get());
+        lifecycleManager = new LifecycleManager(miningController);
 
         ClientTickEvents.END_CLIENT_TICK.register(this::onClientTick);
-        UseItemCallback.EVENT.register(this::onSwordUse);
+        UseItemCallback.EVENT.register(selectionTool::onSwordUse);
         WorldRenderEvents.AFTER_ENTITIES.register(this::onRenderWorld);
+        // 帧级视角平滑:在相机更新后、地形绘制前推进转向视角(消除 tick 级 6° 步进)
+        WorldRenderEvents.START_MAIN.register(ctx -> miningController.getCameraHelper().smoothFrame());
 
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             if (miningController.isMining()) {
@@ -72,74 +52,26 @@ public class AreaAutoMinerClient implements ClientModInitializer {
     }
 
     private void onClientTick(MinecraftClient client) {
-        if (client.player == null) return;
+        // 玩家死亡 / 暂停检测
+        if (lifecycleManager.handleTick(client)) return;
 
-        // isDeadOrDying() 在 1.21.11 中不存在，使用 getHealth() <= 0 替代
-        if (!client.player.isAlive() || client.player.getHealth() <= 0) {
-            if (lifeCycleState != LifeCycleState.DEAD && miningController.isMining()) {
-                miningController.stopMining();
-                client.player.sendMessage(Text.literal("§c玩家死亡，停止挖掘"), false);
-            }
-            lifeCycleState = LifeCycleState.DEAD;
-            return;
-        }
-
-        // 任意 GUI 打开时暂停（包括聊天框、箱子、配置界面等）
-        boolean isPaused = client.currentScreen != null;
-        if (isPaused && miningController.isMining()) {
-            if (lifeCycleState != LifeCycleState.PAUSED) {
-                miningController.stopMining();
-                client.player.sendMessage(Text.literal("§c界面打开，停止挖掘"), false);
-            }
-            lifeCycleState = LifeCycleState.PAUSED;
-        } else if (!isPaused && client.player.isAlive()) {
-            lifeCycleState = LifeCycleState.ALIVE;
-        }
-
-        boolean kPressed = GLFW.glfwGetKey(client.getWindow().getHandle(), GLFW.GLFW_KEY_K) == GLFW.GLFW_PRESS;
-        if (kPressed && !kPressedLastTick) {
+        // 通过注册的 KeyBinding 检测（可在控制设置中改键），wasPressed 自带边沿检测
+        if (TOGGLE_KEY.wasPressed()) {
             if (!miningController.isMining()) {
-                miningController.startMining(pos1, pos2);
+                miningController.startMining(selectionTool.getPos1(), selectionTool.getPos2());
             } else {
                 miningController.stopMining();
             }
         }
-        kPressedLastTick = kPressed;
         miningController.tick();
-        swordUsedThisTick = false;
+        selectionTool.endTick();
     }
 
     private void onRenderWorld(WorldRenderContext context) {
-        if (pos1 != null && pos2 != null) {
-            RegionRenderer.renderRegion(context, pos1, pos2);
+        if (selectionTool.getPos1() != null && selectionTool.getPos2() != null) {
+            RegionRenderer.renderRegion(context, selectionTool.getPos1(), selectionTool.getPos2());
         }
         // 挖掘进行中时，用红色边框高亮当前目标方块
         RegionRenderer.renderTargetBlock(context, miningController.getCurrentTargetPos());
-    }
-
-    private ActionResult onSwordUse(PlayerEntity player, World world, Hand hand) {
-        if (hand != Hand.MAIN_HAND) return ActionResult.PASS;
-        if (swordUsedThisTick) return ActionResult.PASS;
-
-        ItemStack stack = player.getStackInHand(hand);
-        if (stack.getItem() != Items.WOODEN_SWORD &&
-                stack.getItem() != Items.STONE_SWORD &&
-                stack.getItem() != Items.IRON_SWORD &&
-                stack.getItem() != Items.GOLDEN_SWORD &&
-                stack.getItem() != Items.DIAMOND_SWORD &&
-                stack.getItem() != Items.NETHERITE_SWORD) return ActionResult.PASS;
-
-        BlockHitResult hit = (BlockHitResult) player.raycast(5.0, 0.0f, false);
-        if (hit.getType() != HitResult.Type.BLOCK) return ActionResult.PASS;
-
-        swordUsedThisTick = true;
-        if (!player.isSneaking()) {
-            pos1 = hit.getBlockPos();
-            player.sendMessage(Text.literal("§a点1已记录: " + pos1), false);
-        } else {
-            pos2 = hit.getBlockPos();
-            player.sendMessage(Text.literal("§a点2已记录: " + pos2), false);
-        }
-        return ActionResult.SUCCESS;
     }
 }

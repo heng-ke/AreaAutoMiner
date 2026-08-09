@@ -2,13 +2,16 @@ package xyz.hengke.areaautominer.helper;
 
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.option.KeyBinding;
-import xyz.hengke.areaautominer.context.MiningContext;
 
+/**
+ * 模拟按键输入：让移动由游戏原生物理驱动。
+ * 仅依赖 MinecraftClient，与挖掘状态无关。
+ */
 public class InputHelper {
-    private final MiningContext context;
+    private final MinecraftClient client;
 
-    public InputHelper(MiningContext context) {
-        this.context = context;
+    public InputHelper(MinecraftClient client) {
+        this.client = client;
     }
 
     public void setKeyPressed(KeyBinding key, boolean pressed) {
@@ -16,7 +19,6 @@ public class InputHelper {
     }
 
     public void releaseAllKeys() {
-        MinecraftClient client = context.getClient();
         if (client.options != null) {
             setKeyPressed(client.options.forwardKey, false);
             setKeyPressed(client.options.jumpKey, false);

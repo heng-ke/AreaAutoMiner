@@ -1,221 +1,115 @@
 package xyz.hengke.areaautominer.config;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import net.fabricmc.loader.api.FabricLoader;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
+import me.shedaniel.autoconfig.ConfigData;
+import me.shedaniel.autoconfig.annotation.Config;
+import me.shedaniel.autoconfig.annotation.ConfigEntry;
 import xyz.hengke.areaautominer.model.MinerMod;
 
-public class MiningConfig {
-    private static final Logger LOGGER = LoggerFactory.getLogger(MiningConfig.class);
-    private static final String CONFIG_NAME = "areaautominer.json";
-    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static MiningConfig INSTANCE;
+/**
+ * 配置模型（AutoConfig 注解驱动）。
+ *
+ * <p>JSON 序列化 / 反序列化与配置界面均由 cloth-config 内置的 AutoConfig 自动生成：
+ * 配置文件位于 {@code config/areaautominer.json}，字段名即 JSON key
+ * （与旧版手写 Gson 的 key 完全一致，老配置文件可直接沿用）。
+ * 单例实例由 {@link MiningConfigHolder} 持有。</p>
+ *
+ * <p>字段一律 public 非 final（AutoConfig 反射读写要求），按 {@link ConfigEntry.Category}
+ * 分组成配置界面选项卡；字段声明顺序即界面显示顺序。tooltip 文案在 lang 文件中维护：
+ * key 为 {@code text.autoconfig.areaautominer.option.<字段名>.@Tooltip}（单行）或
+ * {@code .@Tooltip[0..N-1]}（多行，行数由 {@link ConfigEntry.Gui.Tooltip#count} 决定）。</p>
+ */
+@Config(name = "areaautominer")
+public class MiningConfig implements ConfigData {
+    // 注意：本类不应声明任何无 @ConfigEntry.Category 注解的静态字段，
+    // 否则 AutoConfig 配置界面会为它创建 "default" 空选项卡（见 MiningConfigHolder 说明）。
 
-    private int facingWaitTicks = 15;
-    private int moveWaitTicks = 3;
-    private int maxAirSkipPerTick = 5;
-    private int maxWalkTicks = 200;
-    private int maxStuckTicks = 20;
-    private int maxBreakTicks = 400;
-    private double maxReachSquared = 16.0;
-    private double arriveThreshold = 1.2;
-    private double maxVerticalDistance = 4.0;
-    private int maxWalkRetries = 2;
-    private int maxFacingRetries = 2;
-    private boolean debug = false;
-    private MinerMod minerMod = MinerMod.FROM_TOP_DOWN;
-    private int maxRollbackRetries = 3;
-    private int rollbackCheckInterval = 20;
-    private boolean enableRollbackDetection = true;
-    private int minToolDurability = 10;
+    // ==================== 时序配置 ====================
+    @ConfigEntry.Category("时序配置")
+    @ConfigEntry.Gui.Tooltip(count = 1)
+    public int moveWaitTicks = 3;
+    @ConfigEntry.Category("时序配置")
+    @ConfigEntry.Gui.Tooltip(count = 1)
+    public int maxAirSkipPerTick = 5;
+    @ConfigEntry.Category("时序配置")
+    @ConfigEntry.Gui.Tooltip(count = 1)
+    public int maxWalkTicks = 200;
+    @ConfigEntry.Category("时序配置")
+    @ConfigEntry.Gui.Tooltip(count = 1)
+    public int maxStuckTicks = 20;
+    @ConfigEntry.Category("时序配置")
+    @ConfigEntry.Gui.Tooltip(count = 1)
+    public int maxBreakTicks = 400;
+    // 单次转向硬超时（tick，20 = 1 秒）：持续被外部干扰时避免死循环
+    @ConfigEntry.Category("时序配置")
+    @ConfigEntry.Gui.Tooltip(count = 2)
+    public int maxFaceTicks = 80;
+
+    // ==================== 距离配置 ====================
+    // 选区（手持剑右键选点）的最大射线距离（格）
+    @ConfigEntry.Category("距离配置")
+    @ConfigEntry.Gui.Tooltip(count = 1)
+    public double selectionMaxDistance = 5.0;
+    // 默认 20.25 = 4.5^2，与原版生存模式交互距离（4.5 格）一致
+    @ConfigEntry.Category("距离配置")
+    @ConfigEntry.Gui.Tooltip(count = 2)
+    public double maxReachSquared = 20.25;
+    @ConfigEntry.Category("距离配置")
+    @ConfigEntry.Gui.Tooltip(count = 1)
+    public double arriveThreshold = 1.2;
+    @ConfigEntry.Category("距离配置")
+    @ConfigEntry.Gui.Tooltip(count = 1)
+    public double maxVerticalDistance = 4.0;
     // vanilla A* 寻路的跟随范围（同时作为 ChunkCache 半径基准，格）
-    private int pathFollowRange = 32;
+    @ConfigEntry.Category("距离配置")
+    @ConfigEntry.Gui.Tooltip(count = 2)
+    public int pathFollowRange = 32;
 
-    private MiningConfig() {}
+    // ==================== 重试配置 ====================
+    @ConfigEntry.Category("重试配置")
+    @ConfigEntry.Gui.Tooltip(count = 1)
+    public int maxWalkRetries = 2;
 
-    public static MiningConfig getInstance() {
-        if (INSTANCE == null) {
-            INSTANCE = load();
+    // ==================== 挖掘配置 ====================
+    @ConfigEntry.Category("挖掘配置")
+    @ConfigEntry.Gui.Tooltip(count = 1)
+    public MinerMod minerMod = MinerMod.FROM_TOP_DOWN;
+    @ConfigEntry.Category("挖掘配置")
+    @ConfigEntry.Gui.Tooltip(count = 1)
+    public int minToolDurability = 10;
+    // 视角对准阈值（度）：剩余偏差小于此值视为已对准，直接开始挖掘
+    @ConfigEntry.Category("挖掘配置")
+    @ConfigEntry.Gui.Tooltip(count = 2)
+    public double facingThresholdDegrees = 5.0;
+    // 挖掘中视角重对准阈值（度）：偏差超过此值中断挖掘重新转向
+    @ConfigEntry.Category("挖掘配置")
+    @ConfigEntry.Gui.Tooltip(count = 1)
+    public double reFacingThresholdDegrees = 15.0;
+
+    // ==================== 回滚检测 ====================
+    @ConfigEntry.Category("回滚检测")
+    @ConfigEntry.Gui.Tooltip(count = 1)
+    public boolean enableRollbackDetection = true;
+    @ConfigEntry.Category("回滚检测")
+    @ConfigEntry.Gui.Tooltip(count = 1)
+    public int maxRollbackRetries = 3;
+    // 已挖方块记录上限，超限后回滚检测静默降级
+    @ConfigEntry.Category("回滚检测")
+    @ConfigEntry.Gui.Tooltip(count = 1)
+    public int maxMinedPositions = 50000;
+    @ConfigEntry.Category("回滚检测")
+    @ConfigEntry.Gui.Tooltip(count = 1)
+    public int rollbackCheckInterval = 20;
+
+    // ==================== 调试配置 ====================
+    @ConfigEntry.Category("调试配置")
+    @ConfigEntry.Gui.Tooltip(count = 1)
+    public boolean debug = false;
+
+    @Override
+    public void validatePostLoad() throws ConfigData.ValidationException {
+        // 兜底：手动编辑 JSON 将 minerMod 置为 null 时恢复默认，避免 NPE
+        if (minerMod == null) {
+            minerMod = MinerMod.FROM_TOP_DOWN;
         }
-        return INSTANCE;
-    }
-
-    private static MiningConfig load() {
-        Path configFile = getConfigPath();
-        if (Files.exists(configFile)) {
-            try (var reader = Files.newBufferedReader(configFile, StandardCharsets.UTF_8)) {
-                MiningConfig config = GSON.fromJson(reader, MiningConfig.class);
-                return config;
-            } catch (IOException e) {
-                LOGGER.error("Failed to load config, using defaults", e);
-            }
-        }
-        MiningConfig config = new MiningConfig();
-        config.save();
-        return config;
-    }
-
-    public void save() {
-        Path configFile = getConfigPath();
-        try (var writer = Files.newBufferedWriter(configFile, StandardCharsets.UTF_8)) {
-            GSON.toJson(this, writer);
-        } catch (IOException e) {
-            LOGGER.error("Failed to save config", e);
-        }
-    }
-
-    private static Path getConfigPath() {
-        return FabricLoader.getInstance().getConfigDir().resolve(CONFIG_NAME);
-    }
-
-    public int getFacingWaitTicks() {
-        return facingWaitTicks;
-    }
-
-    public void setFacingWaitTicks(int facingWaitTicks) {
-        this.facingWaitTicks = facingWaitTicks;
-    }
-
-    public int getMoveWaitTicks() {
-        return moveWaitTicks;
-    }
-
-    public void setMoveWaitTicks(int moveWaitTicks) {
-        this.moveWaitTicks = moveWaitTicks;
-    }
-
-    public int getMaxAirSkipPerTick() {
-        return maxAirSkipPerTick;
-    }
-
-    public void setMaxAirSkipPerTick(int maxAirSkipPerTick) {
-        this.maxAirSkipPerTick = maxAirSkipPerTick;
-    }
-
-    public int getMaxWalkTicks() {
-        return maxWalkTicks;
-    }
-
-    public void setMaxWalkTicks(int maxWalkTicks) {
-        this.maxWalkTicks = maxWalkTicks;
-    }
-
-    public int getMaxStuckTicks() {
-        return maxStuckTicks;
-    }
-
-    public void setMaxStuckTicks(int maxStuckTicks) {
-        this.maxStuckTicks = maxStuckTicks;
-    }
-
-    public int getMaxBreakTicks() {
-        return maxBreakTicks;
-    }
-
-    public void setMaxBreakTicks(int maxBreakTicks) {
-        this.maxBreakTicks = maxBreakTicks;
-    }
-
-    public double getMaxReachSquared() {
-        return maxReachSquared;
-    }
-
-    public void setMaxReachSquared(double maxReachSquared) {
-        this.maxReachSquared = maxReachSquared;
-    }
-
-    public double getArriveThreshold() {
-        return arriveThreshold;
-    }
-
-    public void setArriveThreshold(double arriveThreshold) {
-        this.arriveThreshold = arriveThreshold;
-    }
-
-    public double getMaxVerticalDistance() {
-        return maxVerticalDistance;
-    }
-
-    public void setMaxVerticalDistance(double maxVerticalDistance) {
-        this.maxVerticalDistance = maxVerticalDistance;
-    }
-
-    public int getMaxWalkRetries() {
-        return maxWalkRetries;
-    }
-
-    public void setMaxWalkRetries(int maxWalkRetries) {
-        this.maxWalkRetries = maxWalkRetries;
-    }
-
-    public int getMaxFacingRetries() {
-        return maxFacingRetries;
-    }
-
-    public void setMaxFacingRetries(int maxFacingRetries) {
-        this.maxFacingRetries = maxFacingRetries;
-    }
-
-    public boolean isDebug() {
-        return debug;
-    }
-
-    public void setDebug(boolean debug) {
-        this.debug = debug;
-    }
-
-    public MinerMod getMinerMod() {
-        return minerMod;
-    }
-
-    public void setMinerMod(MinerMod minerMod) {
-        this.minerMod = minerMod;
-    }
-
-    public int getMaxRollbackRetries() {
-        return maxRollbackRetries;
-    }
-
-    public void setMaxRollbackRetries(int maxRollbackRetries) {
-        this.maxRollbackRetries = maxRollbackRetries;
-    }
-
-    public int getRollbackCheckInterval() {
-        return rollbackCheckInterval;
-    }
-
-    public void setRollbackCheckInterval(int rollbackCheckInterval) {
-        this.rollbackCheckInterval = rollbackCheckInterval;
-    }
-
-    public boolean isRollbackDetectionEnabled() {
-        return enableRollbackDetection;
-    }
-
-    public void setEnableRollbackDetection(boolean enableRollbackDetection) {
-        this.enableRollbackDetection = enableRollbackDetection;
-    }
-
-    public int getMinToolDurability() {
-        return minToolDurability;
-    }
-
-    public void setMinToolDurability(int minToolDurability) {
-        this.minToolDurability = minToolDurability;
-    }
-
-    public int getPathFollowRange() {
-        return pathFollowRange;
-    }
-
-    public void setPathFollowRange(int pathFollowRange) {
-        this.pathFollowRange = pathFollowRange;
     }
 }

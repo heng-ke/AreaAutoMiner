@@ -10,7 +10,6 @@ import net.minecraft.entity.mob.ZombieEntity;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.chunk.ChunkCache;
 import xyz.hengke.areaautominer.config.MiningConfig;
-import xyz.hengke.areaautominer.context.MiningContext;
 
 import java.util.Set;
 
@@ -39,7 +38,8 @@ public class PathfindingHelper {
     // ChunkCache 最小半径
     private static final int MIN_CACHE_RADIUS = 16;
 
-    private final MiningContext context;
+    private final MinecraftClient client;
+    private final MiningConfig config;
 
     /** 复用的临时虚拟实体，定位到玩家位置用于寻路计算，不加入世界、不 tick */
     private MobEntity phantomMob;
@@ -48,8 +48,9 @@ public class PathfindingHelper {
     private PathNodeNavigator navigator;
     private int currentRange;
 
-    public PathfindingHelper(MiningContext context) {
-        this.context = context;
+    public PathfindingHelper(MinecraftClient client, MiningConfig config) {
+        this.client = client;
+        this.config = config;
     }
 
     /**
@@ -58,11 +59,12 @@ public class PathfindingHelper {
      * @return {@link Path}（可能为 null，表示不可达或目标在未加载区块）
      */
     public Path computePath(BlockPos target) {
-        MinecraftClient client = context.getClient();
         if (client.world == null || client.player == null) return null;
 
-        MiningConfig config = MiningConfig.getInstance();
-        int followRange = config.getPathFollowRange();
+        int followRange = config.pathFollowRange;
+        // 防御性钳制：UI 限制 8~64，但直接编辑配置文件可绕过；<1 会导致寻路器/范围异常
+        if (followRange < 1) followRange = 1;
+        if (followRange > MAX_CACHE_RADIUS) followRange = MAX_CACHE_RADIUS;
 
         // 1) 确保 / 同步虚拟实体到玩家位置
         MobEntity mob = ensurePhantomMob(client.world);
@@ -82,15 +84,15 @@ public class PathfindingHelper {
         if (navigator == null || currentRange != followRange) {
             nodeMaker = new LandPathNodeMaker();
             nodeMaker.setCanSwim(false);
-            nodeMaker.setCanWalkOverFences(true);
+            // 玩家跳跃高度（约 1.25 格）不足以翻越栅栏（1.5 格高），false 使路径绕开栅栏而非直穿（直穿会卡在栅栏前）
+            nodeMaker.setCanWalkOverFences(false);
             navigator = new PathNodeNavigator(nodeMaker, followRange);
             currentRange = followRange;
         }
 
-        // 4) 初始化节点生成器（每次寻路都要 init，重置内部缓存）
-        nodeMaker.init(cache, mob);
-
-        // 5) 执行 A* 寻路
+        // 4) 执行 A* 寻路
+        // 注：PathNodeNavigator.findPathToAny 内部第一步会调用 nodeMaker.init(cache, mob)
+        //     （重置内部缓存、重建 PathContext），此处无需也不应手动 init
         // 失败原因（区块未加载 / 不可达）由 MovementHelper 按 isPosLoaded 区分并打印重试信息，
         // 此处不重复打印，避免同一事件输出两行
         return navigator.findPathToAny(

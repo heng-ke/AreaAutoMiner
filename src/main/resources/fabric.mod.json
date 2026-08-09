@@ -3,7 +3,7 @@
 	"id": "areaautominer",
 	"version": "${version}",
 	"name": "AreaAutoMiner",
-	"description": "手持剑右键选取点1，潜行+右键选取点2，按K自动从上往下挖掘范围内方块",
+	"description": "手持剑右键选取点1，潜行+右键选取点2，按K自动挖掘范围内方块（默认从上往下，可配置）",
 	"authors": [
 		"heng_ke"
 	],
@@ -14,7 +14,6 @@
 	"license": "MIT License",
 	"icon": "assets/areaautominer/icon.png",
 	"environment": "client",
-	"accessWidener": "areaautominer.accesswidener",
 	"entrypoints": {
 		"main": [
 			"xyz.hengke.areaautominer.AreaAutoMiner"
