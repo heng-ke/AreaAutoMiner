@@ -11,6 +11,7 @@ import xyz.hengke.areaautominer.context.state.BreakingState;
 import xyz.hengke.areaautominer.context.state.FacingState;
 import xyz.hengke.areaautominer.context.state.MovementState;
 import xyz.hengke.areaautominer.context.state.SessionState;
+import xyz.hengke.areaautominer.lifecycle.SessionLifecycle;
 import xyz.hengke.areaautominer.model.MiningState;
 import xyz.hengke.areaautominer.service.Messages;
 import xyz.hengke.areaautominer.service.MiningCompletionService;
@@ -35,13 +36,13 @@ public class BreakingHelper {
     private final SessionState session;
     private final NotificationService notificationService;
     private final MiningCompletionService completionService;
-    private final InputHelper inputHelper;
     private final CameraHelper cameraHelper;
+    private final SessionLifecycle lifecycle;
 
     public BreakingHelper(MinecraftClient client, MiningConfig config, AreaIterator areaIterator,
                           BreakingState breaking, FacingState facing, MovementState movement, SessionState session,
                           NotificationService notificationService, MiningCompletionService completionService,
-                          InputHelper inputHelper, CameraHelper cameraHelper) {
+                          CameraHelper cameraHelper, SessionLifecycle lifecycle) {
         this.client = client;
         this.config = config;
         this.areaIterator = areaIterator;
@@ -51,8 +52,8 @@ public class BreakingHelper {
         this.session = session;
         this.notificationService = notificationService;
         this.completionService = completionService;
-        this.inputHelper = inputHelper;
         this.cameraHelper = cameraHelper;
+        this.lifecycle = lifecycle;
     }
 
     public void startBreaking() {
@@ -137,8 +138,10 @@ public class BreakingHelper {
             int currentDurability = toolStack.getMaxDamage() - toolStack.getDamage();
             if (currentDurability < config.minToolDurability) {
                 notificationService.sendMessage(String.format(Messages.TOOL_LOW_DURABILITY, currentDurability));
-                inputHelper.releaseAllKeys();
-                session.setState(MiningState.IDLE);
+                // 方案A（M1）：完整结束会话（isMining=false + 释放按键 + 清理寻路）。
+                // 旧实现只置 IDLE 而 isMining 仍为 true，玩家换好工具后按 K 只会停止挖掘，
+                // 必须连按两次 K 才能恢复；完整 teardown 后按一次 K 即可重新开始。
+                lifecycle.teardown();
                 return;
             }
         }

@@ -6,6 +6,7 @@ import xyz.hengke.areaautominer.config.MiningConfig;
 import xyz.hengke.areaautominer.context.state.BreakingState;
 import xyz.hengke.areaautominer.context.state.RollbackState;
 import xyz.hengke.areaautominer.context.state.SessionState;
+import xyz.hengke.areaautominer.helper.AreaIterator;
 import xyz.hengke.areaautominer.lifecycle.SessionLifecycle;
 import xyz.hengke.areaautominer.model.MiningState;
 
@@ -21,10 +22,12 @@ public class MiningCompletionService {
     private final BreakingState breaking;
     private final NotificationService notificationService;
     private final SessionLifecycle lifecycle;
+    private final AreaIterator areaIterator;
 
     public MiningCompletionService(MinecraftClient client, MiningConfig config,
                                    RollbackState rollback, SessionState session, BreakingState breaking,
-                                   NotificationService notificationService, SessionLifecycle lifecycle) {
+                                   NotificationService notificationService, SessionLifecycle lifecycle,
+                                   AreaIterator areaIterator) {
         this.client = client;
         this.config = config;
         this.rollback = rollback;
@@ -32,6 +35,7 @@ public class MiningCompletionService {
         this.breaking = breaking;
         this.notificationService = notificationService;
         this.lifecycle = lifecycle;
+        this.areaIterator = areaIterator;
     }
 
     public void completeMining() {
@@ -46,6 +50,11 @@ public class MiningCompletionService {
         }
 
         if (!verifyAllBlocksMined()) {
+            // 方案A（H1）：剔除已确认挖掉（空气）的记录，游标重置到区域起点重新遍历。
+            // 旧实现游标停在区域外（遍历结束时必然越界），重扫只会扫区域外空气层空转，
+            // 区域内的回滚方块永远不会被重挖；重置游标后重扫能真正扫到并挖掉残留方块。
+            rollback.getMinedPositions().removeIf(pos -> client.world.getBlockState(pos).isAir());
+            areaIterator.resetToStart();
             rollback.setRollbackRetryCount(rollback.getRollbackRetryCount() + 1);
             notificationService.sendMessage(Messages.ROLLBACK_MISS_RESCAN);
             session.setState(MiningState.FINDING_BLOCK);

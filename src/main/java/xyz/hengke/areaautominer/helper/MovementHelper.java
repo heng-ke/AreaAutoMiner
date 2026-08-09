@@ -131,6 +131,13 @@ public class MovementHelper {
 
     /** 基于累计位移的卡住检测：相对锚点移动过小则累计计数；累计位移达显著值才重置锚点 */
     private void updateStuckDetection() {
+        // 方案B（M2）：原地转向期间不计卡住、不清零计数——转向是合法状态（XZ 位移必然≈0），
+        // 但此前已累计的卡住计数不会被转向"清零掩盖"，顶墙等异常可跨转向持续累计直至触发
+        if (movement.isTurningInPlace()) {
+            movement.setLastPlayerX(client.player.getX());
+            movement.setLastPlayerZ(client.player.getZ());
+            return;
+        }
         double movedDistance = Math.sqrt(SpatialHelper.calculateHorizontalDistanceSquared(
                 client.player.getX(), client.player.getZ(),
                 movement.getLastPlayerX(), movement.getLastPlayerZ()));
@@ -247,13 +254,18 @@ public class MovementHelper {
         float yawDiff = SpatialHelper.normalizeYawDiff(walkYaw - client.player.getYaw());
 
         // 大角度偏差：先原地转向对准节点，再前进（避免转向慢+前进快导致的圆弧绕圈）。
-        // 原地转向期间同步卡住锚点并清零卡住计数，防止误判卡住
+        // 方案B（M2）：标记 turningInPlace（updateStuckDetection 跳过卡住累计），
+        // 只同步锚点、不清零 stuckCounter——正常转向不计卡住，但顶墙等异常场景的
+        // 卡住计数可跨转向持续累计，不再被反复清零掩盖
         if (Math.abs(yawDiff) > TURN_BEFORE_WALK_THRESHOLD) {
             inputHelper.setKeyPressed(client.options.forwardKey, false);
             inputHelper.setKeyPressed(client.options.jumpKey, false);
-            resetStuckAnchor();
+            movement.setTurningInPlace(true);
+            movement.setLastPlayerX(client.player.getX());
+            movement.setLastPlayerZ(client.player.getZ());
             return;
         }
+        movement.setTurningInPlace(false);
 
         // 跳跃判定：当前节点高于玩家方块 Y（上坡/上台阶）且 onGround
         boolean needJump = nodePos.getY() > client.player.getBlockPos().getY()
@@ -301,6 +313,8 @@ public class MovementHelper {
             movement.setWalkTicks(retryDelayTicks);
             resetStuckAnchor();
             movement.setCurrentPath(null);
+            // 重试即脱离转向态，防止延迟结束后 updateStuckDetection 被残留的 turningInPlace 跳过
+            movement.setTurningInPlace(false);
             // 重试时原地跳跃尝试脱困
             if (movement.getWalkRetryCount() > 1 && client.player.isOnGround() && movement.getJumpCooldown() == 0) {
                 inputHelper.setKeyPressed(client.options.jumpKey, true);

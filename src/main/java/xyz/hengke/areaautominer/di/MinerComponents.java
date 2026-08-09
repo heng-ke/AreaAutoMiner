@@ -46,13 +46,13 @@ public class MinerComponents {
 
         this.completionService = new MiningCompletionService(client, config,
                 context.rollback(), context.session(), context.breaking(),
-                notificationService, lifecycle);
+                notificationService, lifecycle, areaIterator);
 
         this.cameraHelper = new CameraHelper(client, config, context.session(), context.movement(),
                 context.facing(), context.breaking(), inputHelper, notificationService);
         this.breakingHelper = new BreakingHelper(client, config, areaIterator,
                 context.breaking(), context.facing(), context.movement(), context.session(),
-                notificationService, completionService, inputHelper, cameraHelper);
+                notificationService, completionService, cameraHelper, lifecycle);
         this.movementHelper = new MovementHelper(client, config, context.movement(), context.session(),
                 areaIterator, inputHelper, cameraHelper, notificationService, completionService, pathfindingHelper);
         this.blockFinder = new BlockFinder(client, config, areaIterator,

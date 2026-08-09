@@ -123,4 +123,19 @@ public class AreaIterator {
     public BlockPos getCurrentPos() {
         return traversal.getPosition();
     }
+
+    /**
+     * 重置遍历游标到区域起点（回滚重扫用，H1 方案A）：
+     * TOP_DOWN 从最高层 (minX, maxY, minZ) 开始，BOTTOM_UP 从最低层 (minX, minY, minZ) 开始。
+     * 调用方需确保此时遍历已结束（游标在区域外），重置后重新遍历能扫到区域内的回滚方块。
+     */
+    public void resetToStart() {
+        if (config.minerMod == MinerMod.FROM_TOP_DOWN) {
+            traversal.setCurrentY(region.getMaxY());
+        } else {
+            traversal.setCurrentY(region.getMinY());
+        }
+        traversal.setCurrentX(region.getMinX());
+        traversal.setCurrentZ(region.getMinZ());
+    }
 }

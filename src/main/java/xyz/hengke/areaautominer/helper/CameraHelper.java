@@ -14,49 +14,50 @@ import xyz.hengke.areaautominer.model.MiningState;
 import xyz.hengke.areaautominer.service.NotificationService;
 
 /**
- * 视角控制器 —— 增量追踪器 + 帧级平滑。
+ * 视角控制器 —— 帧率无关指数平滑 (Damped Exponential Lerp) + 物理位移鼠标介入检测。
  *
- * <p>逻辑层(tick):{@link #faceBlock()} 只做收敛判定、超时逃生与状态切换,不再直接写视角;
- * 渲染层(帧):{@link #smoothFrame()} 在 {@code WorldRenderEvents.START_MAIN} 每帧回调中,
- * 从真实当前视角出发,按「角速度 × 帧时间比例」向目标做增量逼近 —— tick 级角度步进被摊平到
- * 帧级(60FPS 下每帧仅约 0.3°),彻底消除"甩头/顿挫"。</p>
+ * <p>核心公式: new = current + (target - current) * (1 - exp(-k * dt))，dt 单位为秒。
+ * 天然具备「远快近慢」的近场减速、单调收敛（无 overshoot）、帧率无关特性，
+ * 替代了原实现中 APPROACH_SLOW_ZONE / CONVERGE_CONFIRM_TICKS / MAX_FRAME_DELTA 等
+ * 全部过程式状态。</p>
  *
- * <p>覆盖两个场景:FACING_BLOCK 面向方块(yaw + pitch)、WALKING_TO_BLOCK 行走转向(仅 yaw,
- * 目标为当前寻路节点方向,保持原 13.5°/tick 等效角速度以免重新引入绕圈)。</p>
+ * <p>与纯数学版的差异（相对可行性分析报告 §5 的落地修正）:
+ * <ol>
+ *   <li>帧时间: {@code getRenderTickCounter().getTickProgress()} 差分换算为秒
+ *       （1.21.11 的 MinecraftClient 无 getLastFrameDuration 暴露），并钳制上限
+ *       防极端卡顿单帧瞬移;</li>
+ *   <li>峰值角速度: 指数步长叠加显式上限 {@code vMax * dt}（120°/s，与原 6°/tick 对齐），
+ *       防止启动瞬间"猛甩"（k*diff 可达 720°/s）;</li>
+ *   <li>鼠标介入检测: 帧间鼠标物理位移差分 + 2px 阈值（公开 API，零新增依赖；
+ *       fabric-api 0.141.5 实证无 MouseInputEvents 事件，事件驱动方案不可用）;</li>
+ *   <li>收敛判定: 指数平滑单调收敛，单次低于阈值即完成，无需连续防抖。</li>
+ * </ol></p>
  *
- * <p>鼠标输入优先:玩家主动移动鼠标时,本帧不推进,视角完全跟手;松手后从当前位置继续逼近。
- * 玩家动鼠标不再被 mod 抢视角,也消除了"跟手但抽搐"。</p>
- *
- * <p>依赖的状态对象:SessionState(会话开关/状态机)、MovementState(移动稳定等待/路径)、
- * FacingState(目标角度)、BreakingState(转向完成后的挖掘初始化)。</p>
+ * <p>逻辑层(tick):{@link #faceBlock()} 只做移动稳定等待、收敛判定、超时逃生与状态切换;
+ * 渲染层(帧):{@link #smoothFrame()} 在 {@code WorldRenderEvents.START_MAIN} 每帧回调中推进视角。
+ * 覆盖 FACING_BLOCK（yaw+pitch）与 WALKING_TO_BLOCK（仅 yaw，目标为当前寻路节点方向）两个场景。</p>
  */
 public class CameraHelper {
 
-    // ---- 角速度与收敛(单位:度)----
-    /** Yaw 每 tick 最大转角(≈120°/s,接近自然转头速度) */
-    private static final float YAW_SPEED = 6.0F;
-    /** Pitch 每 tick 最大转角(pitch 行程通常远小于 yaw,可略快) */
-    private static final float PITCH_SPEED = 8.0F;
-    /** 行走转向每 tick 最大转角(10°/tick≈200°/s;低于原 13.5 以降低单帧跳变,
-     *  仍满足防绕圈:曲率半径 v/ω≈0.216/(10°→0.175rad)=1.24 格 < 节点阈值 1.5) */
-    private static final float WALK_YAW_SPEED = 10.0F;
-    /** 单帧最多推进的 tick 比例:clamp 帧时间增量,消除卡顿/低帧率时单帧跳变(剩余由后续帧补) */
-    private static final float MAX_FRAME_DELTA = 0.5F;
-    /** 玩家鼠标输入判定阈值(物理光标位移,像素):滑动窗口累积值超过它才视为玩家操作,
-     *  行走时手握鼠标的微抖(单帧 0.5~1px)不会误判 */
-    private static final double MOUSE_INPUT_EPS = 2.0;
-    /** 鼠标位移累积窗的指数衰减因子:单帧微抖被平均掉,持续输入快速累积 */
-    private static final double MOUSE_ACCUM_DECAY = 0.5;
-    /** 判定收敛的剩余偏差(度):连续 CONVERGE_CONFIRM_TICKS 个 tick 满足即完成 */
+    // ---- 数学参数（替代原 11 个过程式常量）----
+    /** 面向方块收敛刚度 k(秒⁻¹)：叠加 vMax 后仅控制收尾段（剩余 <16° 由指数接管），
+     *  90° 全程 ≈0.85s（匀速段 0.62s + 指数尾段 0.25s） */
+    private static final float FACE_K = 8.0F;
+    /** 行走转向刚度：略低以保持路径跟踪柔和 */
+    private static final float WALK_K = 5.0F;
+    /** 最大角速度(°/s)：与原 6°/tick=120°/s 对齐，钳制峰值转速防"猛甩" */
+    private static final float MAX_YAW_SPEED = 120.0F;
+    /** Pitch 行程通常远小于 yaw，可略快 */
+    private static final float MAX_PITCH_SPEED = 160.0F;
+    /** 收敛判定阈值(度)：单次低于即完成（指数平滑单调收敛，无需防抖） */
     private static final float CONVERGE_EPS = 1.5F;
-    /** 收敛防抖:连续满足收敛条件的 tick 数 */
-    private static final int CONVERGE_CONFIRM_TICKS = 2;
+    /** 帧时间安全钳制(秒)：低于 ~20FPS 时按 20FPS 等效推进，防极端卡顿单帧瞬移 */
+    private static final float MAX_FRAME_DT = 0.05F;
     /** 超时后剩余偏差仍大于此值 → 判定干扰过大,重新开始逼近;否则强制完成 */
     private static final float HARD_FAIL_EPS = 25.0F;
-    /** 近场减速带:剩余角度小于此值开始按比例减速,避免终点急停顿挫 */
-    private static final float APPROACH_SLOW_ZONE = 12.0F;
-    /** 近场减速的最小比例(防止无限趋近不收敛) */
-    private static final float APPROACH_MIN_RATIO = 0.35F;
+    /** 鼠标介入检测阈值(像素/帧)：1px ≈ 0.1~0.3°(灵敏度相关)，2px 滤行走微抖、
+     *  不误伤主动甩视角；mod 自身 setYaw 不产生鼠标物理位移，天然免疫误判 */
+    private static final double MOUSE_OVERRIDE_THRESHOLD_PX = 2.0;
 
     private final MinecraftClient client;
     private final MiningConfig config;
@@ -67,16 +68,13 @@ public class CameraHelper {
     private final InputHelper inputHelper;
     private final NotificationService notificationService;
 
-    // ---- 转向会话状态(由 beginFacing() 重置;不放在 MiningContext,避免污染全局)----
-    private int faceTicks = 0;        // 本会话已进行 tick 数(硬超时用)
-    private int convergeTicks = 0;    // 连续满足收敛条件的 tick 数(防抖)
-
-    // ---- 帧级推进状态 ----
-    private float lastFrameProgress = 0.0F;   // 上一帧的 tick 插值因子(计算帧时间增量)
-    private double lastMouseX = 0.0;          // 上一帧鼠标物理位置(输入检测)
-    private double lastMouseY = 0.0;
-    private double mouseMoveAccum = 0.0;      // 鼠标位移滑动窗口累积值(指数衰减,抗微抖)
-    private boolean mouseBaselineReady = false;
+    /** 本会话已进行 tick 数（硬超时用） */
+    private int faceTicks = 0;
+    /** 上一帧鼠标物理位置（介入检测基准，NaN=未初始化） */
+    private double lastMouseX = Double.NaN;
+    private double lastMouseY = Double.NaN;
+    /** 上一帧的 tick 插值因子（计算帧时间增量） */
+    private float lastTickProgress = 0.0F;
 
     public CameraHelper(MinecraftClient client, MiningConfig config, SessionState session, MovementState movement,
                         FacingState facing, BreakingState breaking,
@@ -100,7 +98,8 @@ public class CameraHelper {
     public void beginFacing() {
         inputHelper.releaseAllKeys();
         faceTicks = 0;
-        convergeTicks = 0;
+        lastMouseX = Double.NaN;
+        lastMouseY = Double.NaN;
     }
 
     /**
@@ -126,27 +125,20 @@ public class CameraHelper {
         if (faceTicks == 0) beginFacing();
         faceTicks++;
 
-        // 基于最新真实视角(由帧级推进更新)检查剩余偏差
-        float currentYaw = client.player.getYaw();
-        float currentPitch = client.player.getPitch();
-        float yawDiff = SpatialHelper.normalizeYawDiff(facing.getTargetYaw() - currentYaw);
-        float pitchDiff = facing.getTargetPitch() - currentPitch;
+        float yawDiff = Math.abs(SpatialHelper.normalizeYawDiff(
+                facing.getTargetYaw() - client.player.getYaw()));
+        float pitchDiff = Math.abs(facing.getTargetPitch() - client.player.getPitch());
 
-        // ---- 收敛判定:剩余角度 + 连续 2 tick 防抖 ----
-        boolean converged = Math.abs(yawDiff) <= CONVERGE_EPS && Math.abs(pitchDiff) <= CONVERGE_EPS;
-        if (converged) {
-            if (++convergeTicks >= CONVERGE_CONFIRM_TICKS) {
-                finishFacing();
-                return;
-            }
-        } else {
-            convergeTicks = 0;
+        // ---- 收敛判定:指数平滑单调收敛,单次低于阈值即完成(无需连续防抖) ----
+        if (yawDiff <= CONVERGE_EPS && pitchDiff <= CONVERGE_EPS) {
+            finishFacing();
+            return;
         }
 
         // ---- 硬超时逃生:持续被外部干扰时的出口(以真实视角为新起点,无跳变) ----
         if (faceTicks >= config.maxFaceTicks) {
-            if (Math.abs(yawDiff) > HARD_FAIL_EPS || Math.abs(pitchDiff) > HARD_FAIL_EPS) {
-                notificationService.logDebug("转向超时且偏差过大(" + Math.round(Math.abs(yawDiff))
+            if (yawDiff > HARD_FAIL_EPS || pitchDiff > HARD_FAIL_EPS) {
+                notificationService.logDebug("转向超时且偏差过大(" + Math.round(yawDiff)
                         + "°)，重置会话重新逼近");
                 beginFacing();
             } else {
@@ -157,10 +149,10 @@ public class CameraHelper {
     }
 
     /**
-     * 每帧视角推进(注册到 WorldRenderEvents.BEFORE_TERRAIN)。
+     * 每帧视角推进(注册到 WorldRenderEvents.START_MAIN)。
      *
-     * <p>仅在 FACING_BLOCK 且非移动等待时生效;玩家移动鼠标时本帧跳过(完全跟手),
-     * 松手后从当前位置继续逼近。步长 = 角速度 × 帧时间比例,帧率无关、无步进。</p>
+     * <p>指数步长 + 显式角速度上限: step = clamp((target-current)*alpha, ±vMax*dt)。
+     * 玩家移动鼠标时本帧跳过(完全跟手),松手后从当前位置继续逼近。</p>
      */
     public void smoothFrame() {
         if (client.player == null) return;
@@ -169,30 +161,34 @@ public class CameraHelper {
         if (state != MiningState.FACING_BLOCK && state != MiningState.WALKING_TO_BLOCK) return;
         if (movement.isMovingWait()) return;
 
-        // ---- 鼠标输入优先(滑动窗口):玩家主动操作视角时完全跟手,不推进。
-        // 行走时手握鼠标的微抖被指数衰减窗平均掉,不会造成"走走停停"的抽搐 ----
+        // ---- 鼠标介入检测（帧间物理位移，像素）：玩家动鼠标则本帧不推进，完全跟手;
+        //      自动转向不产生鼠标物理位移,不会误判;松手后从当前位置继续逼近 ----
         double mx = client.mouse.getX();
         double my = client.mouse.getY();
-        if (!mouseBaselineReady) {
-            lastMouseX = mx;
-            lastMouseY = my;
-            mouseBaselineReady = true;
+        if (!Double.isNaN(lastMouseX)) {
+            if (Math.abs(mx - lastMouseX) + Math.abs(my - lastMouseY) > MOUSE_OVERRIDE_THRESHOLD_PX) {
+                lastMouseX = mx;
+                lastMouseY = my;
+                return;
+            }
         }
-        double frameMove = Math.abs(mx - lastMouseX) + Math.abs(my - lastMouseY);
         lastMouseX = mx;
         lastMouseY = my;
-        mouseMoveAccum = mouseMoveAccum * MOUSE_ACCUM_DECAY + frameMove;
-        if (mouseMoveAccum > MOUSE_INPUT_EPS) return;
 
-        // ---- 帧时间增量:保证任意帧率下角速度恒定,并 clamp 单帧推进量
-        // (卡顿/低帧率时单帧不跳大角度,剩余由后续帧补) ----
+        // ---- 帧时间(秒):getTickProgress 差分 = 帧间隔 tick 数 → /20;
+        //      钳制上限,卡顿恢复时按 20FPS 等效推进,剩余由后续帧补 ----
         float progress = client.getRenderTickCounter().getTickProgress(true);
-        float frameDelta = progress - lastFrameProgress;
-        if (frameDelta < 0.0F) frameDelta = progress;   // 新 tick 开始,progress 回绕
-        lastFrameProgress = progress;
-        if (frameDelta > MAX_FRAME_DELTA) frameDelta = MAX_FRAME_DELTA;
+        float frameDelta = progress - lastTickProgress;
+        if (frameDelta <= 0.0F) frameDelta = progress;   // 新 tick 开始,progress 回绕(近似)
+        lastTickProgress = progress;
+        float dt = frameDelta / 20.0F;
+        if (dt > MAX_FRAME_DT) dt = MAX_FRAME_DT;
 
-        // ---- 从真实当前视角出发,向目标走一步 ----
+        // ---- 指数平滑因子 + 角速度上限(峰值 = min(k*diff, vMax)) ----
+        float k = (state == MiningState.FACING_BLOCK) ? FACE_K : WALK_K;
+        float alpha = 1.0F - (float) Math.exp(-k * dt);
+        float maxYawStep = MAX_YAW_SPEED * dt;
+
         if (state == MiningState.FACING_BLOCK) {
             // 面向方块:yaw + pitch
             float currentYaw = client.player.getYaw();
@@ -200,10 +196,11 @@ public class CameraHelper {
             float yawDiff = SpatialHelper.normalizeYawDiff(facing.getTargetYaw() - currentYaw);
             float pitchDiff = facing.getTargetPitch() - currentPitch;
 
-            client.player.setYaw(currentYaw + stepTowards(yawDiff, YAW_SPEED * frameDelta));
-            client.player.setPitch(MathHelper.clamp(currentPitch + stepTowards(pitchDiff, PITCH_SPEED * frameDelta), -90.0F, 90.0F));
+            client.player.setYaw(currentYaw + clampStep(yawDiff * alpha, maxYawStep));
+            client.player.setPitch(MathHelper.clamp(
+                    currentPitch + clampStep(pitchDiff * alpha, MAX_PITCH_SPEED * dt), -90.0F, 90.0F));
         } else {
-            // 行走转向:仅 yaw,目标 = 当前寻路节点方向(10°/tick,单帧 ≤5°)
+            // 行走转向:仅 yaw,目标 = 当前寻路节点方向
             Path path = movement.getCurrentPath();
             if (path == null || path.isFinished()) return;
             BlockPos nodePos = path.getCurrentNodePos();
@@ -212,7 +209,7 @@ public class CameraHelper {
                     client.player.getX(), client.player.getZ(),
                     nodePos.getX() + 0.5, nodePos.getZ() + 0.5);
             float yawDiff = SpatialHelper.normalizeYawDiff(walkYaw - client.player.getYaw());
-            client.player.setYaw(client.player.getYaw() + stepTowards(yawDiff, WALK_YAW_SPEED * frameDelta));
+            client.player.setYaw(client.player.getYaw() + clampStep(yawDiff * alpha, maxYawStep));
         }
     }
 
@@ -261,16 +258,8 @@ public class CameraHelper {
 
     // ==================== 工具 ====================
 
-    /**
-     * 计算本帧的增量转角:限速 + 近场减速。
-     * 返回值与 delta 同号,|返回值| <= maxSpeed;剩余角度小于一步时只走剩余角度(无 overshoot)。
-     */
-    private float stepTowards(float delta, float maxSpeed) {
-        float abs = Math.abs(delta);
-        if (abs <= 0.0001F) return 0.0F;
-        float ratio = abs < APPROACH_SLOW_ZONE
-                ? Math.max(APPROACH_MIN_RATIO, abs / APPROACH_SLOW_ZONE)
-                : 1.0F;
-        return Math.copySign(Math.min(abs, maxSpeed * ratio), delta);
+    /** 对称钳制:保留符号,限制绝对值(指数步长与角速度上限的交集) */
+    private static float clampStep(float value, float max) {
+        return MathHelper.clamp(value, -max, max);
     }
 }

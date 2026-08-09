@@ -64,7 +64,14 @@ public class PathfindingHelper {
         int followRange = config.pathFollowRange;
         // 防御性钳制：UI 限制 8~64，但直接编辑配置文件可绕过；<1 会导致寻路器/范围异常
         if (followRange < 1) followRange = 1;
-        if (followRange > MAX_CACHE_RADIUS) followRange = MAX_CACHE_RADIUS;
+
+        // 方案A（M3）：寻路范围至少覆盖玩家→目标的水平距离（+2 格余量），
+        // 避免目标稍远（> pathFollowRange 默认 32 格）时寻路必然失败、被误判"不可达"而跳过方块
+        double distanceToTarget = Math.sqrt(SpatialHelper.calculateHorizontalDistanceSquared(
+                client.player.getX(), client.player.getZ(),
+                target.getX() + 0.5, target.getZ() + 0.5));
+        int effectiveRange = Math.max(followRange, (int) Math.ceil(distanceToTarget) + 2);
+        if (effectiveRange > MAX_CACHE_RADIUS) effectiveRange = MAX_CACHE_RADIUS;
 
         // 1) 确保 / 同步虚拟实体到玩家位置
         MobEntity mob = ensurePhantomMob(client.world);
@@ -72,22 +79,22 @@ public class PathfindingHelper {
                 client.player.getX(), client.player.getY(), client.player.getZ(),
                 client.player.getYaw(), 0.0f);
 
-        // 2) 构造 ChunkCache：以玩家为中心，半径 = min(MAX, max(MIN, followRange))
+        // 2) 构造 ChunkCache：以玩家为中心，半径 = min(MAX, max(MIN, effectiveRange))
         //    半径需覆盖玩家→目标距离，否则目标节点不在缓存内会寻路失败
         BlockPos origin = client.player.getBlockPos();
-        int radius = Math.min(MAX_CACHE_RADIUS, Math.max(MIN_CACHE_RADIUS, followRange));
+        int radius = Math.min(MAX_CACHE_RADIUS, Math.max(MIN_CACHE_RADIUS, effectiveRange));
         BlockPos min = origin.add(-radius, -radius, -radius);
         BlockPos max = origin.add(radius, radius, radius);
         ChunkCache cache = new ChunkCache(client.world, min, max);
 
         // 3) 重建 / 复用 navigator（range 变化时重建）
-        if (navigator == null || currentRange != followRange) {
+        if (navigator == null || currentRange != effectiveRange) {
             nodeMaker = new LandPathNodeMaker();
             nodeMaker.setCanSwim(false);
             // 玩家跳跃高度（约 1.25 格）不足以翻越栅栏（1.5 格高），false 使路径绕开栅栏而非直穿（直穿会卡在栅栏前）
             nodeMaker.setCanWalkOverFences(false);
-            navigator = new PathNodeNavigator(nodeMaker, followRange);
-            currentRange = followRange;
+            navigator = new PathNodeNavigator(nodeMaker, effectiveRange);
+            currentRange = effectiveRange;
         }
 
         // 4) 执行 A* 寻路
@@ -96,7 +103,7 @@ public class PathfindingHelper {
         // 失败原因（区块未加载 / 不可达）由 MovementHelper 按 isPosLoaded 区分并打印重试信息，
         // 此处不重复打印，避免同一事件输出两行
         return navigator.findPathToAny(
-                cache, mob, Set.of(target), (float) followRange, PATH_DISTANCE, RANGE_MULTIPLIER);
+                cache, mob, Set.of(target), (float) effectiveRange, PATH_DISTANCE, RANGE_MULTIPLIER);
     }
 
     /**

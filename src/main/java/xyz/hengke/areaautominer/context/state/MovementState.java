@@ -18,6 +18,8 @@ public class MovementState {
     private int walkRetryCount = 0;
     // 头顶跳跃进行中：已起跳、等待落地。用于避免"落地后立刻重复起跳"的原地连跳
     private boolean jumpInProgress = false;
+    // 原地转向进行中（上一 tick 在 followPath 转向分支）：转向期间不计卡住、不清零计数（M2 方案B）
+    private boolean turningInPlace = false;
 
     private Path currentPath;
 
@@ -30,6 +32,7 @@ public class MovementState {
         this.lastPlayerZ = playerZ;
         this.currentPath = null;
         this.jumpInProgress = false;
+        this.turningInPlace = false;
     }
 
     /** 重置一次行走会话的公共状态（到达/跳过/重试超限后统一清理） */
@@ -39,6 +42,7 @@ public class MovementState {
         this.walkRetryCount = 0;
         this.currentPath = null;
         this.jumpInProgress = false;
+        this.turningInPlace = false;
     }
 
     public int getWaitTicks() {
@@ -113,6 +117,14 @@ public class MovementState {
         this.jumpInProgress = jumpInProgress;
     }
 
+    public boolean isTurningInPlace() {
+        return turningInPlace;
+    }
+
+    public void setTurningInPlace(boolean turningInPlace) {
+        this.turningInPlace = turningInPlace;
+    }
+
     public Path getCurrentPath() {
         return currentPath;
     }
@@ -131,6 +143,7 @@ public class MovementState {
         jumpCooldown = 0;
         walkRetryCount = 0;
         jumpInProgress = false;
+        turningInPlace = false;
         currentPath = null;
     }
 }
