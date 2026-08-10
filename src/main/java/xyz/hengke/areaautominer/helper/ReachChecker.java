@@ -28,9 +28,10 @@ public final class ReachChecker {
         double targetX = SpatialMath.centerX(targetPos);
         double targetY = SpatialMath.centerY(targetPos);
         double targetZ = SpatialMath.centerZ(targetPos);
-        double playerX = client.player.getX();
+        Vec3d playerPos = SpatialMath.getPlayerPos(client);
+        double playerX = playerPos.x;
         double playerY = SpatialMath.getPlayerEyeY(client);
-        double playerZ = client.player.getZ();
+        double playerZ = playerPos.z;
 
         double horizontalDistanceSquared = SpatialMath.calculateHorizontalDistanceSquared(playerX, playerZ, targetX, targetZ);
         double verticalDistance = Math.abs(playerY - targetY);
@@ -60,11 +61,7 @@ public final class ReachChecker {
     }
 
     public static Direction getVisibleFace(MinecraftClient client, BlockPos targetPos) {
-        Vec3d eyePos = new Vec3d(
-                client.player.getX(),
-                SpatialMath.getPlayerEyeY(client),
-                client.player.getZ()
-        );
+        Vec3d eyePos = SpatialMath.getPlayerEyePos(client);
 
         Direction[] faces = {Direction.UP, Direction.DOWN, Direction.EAST, Direction.WEST, Direction.SOUTH, Direction.NORTH};
 

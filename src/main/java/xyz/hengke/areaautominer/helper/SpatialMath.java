@@ -5,7 +5,7 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
-import xyz.hengke.areaautominer.context.state.FacingState;
+import xyz.hengke.areaautominer.state.FacingState;
 
 /**
  * 空间数学纯函数（方案 7 彻底版 + DRY-4/5/6 收敛点）：坐标/角度换算，无世界查询。
@@ -40,9 +40,10 @@ public final class SpatialMath {
 
     /** 计算玩家到目标方块中心的方向（挖掘朝向）：按 |Δ| 最大的轴取面 */
     public static Direction calculateDirection(MinecraftClient client, BlockPos targetPos) {
-        double dx = centerX(targetPos) - client.player.getX();
+        Vec3d playerPos = getPlayerPos(client);
+        double dx = centerX(targetPos) - playerPos.x;
         double dy = centerY(targetPos) - getPlayerEyeY(client);
-        double dz = centerZ(targetPos) - client.player.getZ();
+        double dz = centerZ(targetPos) - playerPos.z;
 
         double absX = Math.abs(dx);
         double absY = Math.abs(dy);
@@ -62,6 +63,18 @@ public final class SpatialMath {
     /** 玩家视线高度（脚部 Y + 当前姿态眼高），全项目唯一实现 */
     public static double getPlayerEyeY(MinecraftClient client) {
         return client.player.getY() + client.player.getEyeHeight(client.player.getPose());
+    }
+
+    // ---------- DRY-7：玩家位置统一读取 ----------
+
+    /** 玩家脚部位置（三维）。全项目统一入口，取代散落的 getX()/getZ() 成对读取 */
+    public static Vec3d getPlayerPos(MinecraftClient client) {
+        return new Vec3d(client.player.getX(), client.player.getY(), client.player.getZ());
+    }
+
+    /** 玩家视线位置（原生 Entity.getEyePos，含当前姿态眼高）。取代手拼 new Vec3d(x, getPlayerEyeY, z) */
+    public static Vec3d getPlayerEyePos(MinecraftClient client) {
+        return client.player.getEyePos();
     }
 
     // ---------- DRY-5：方块中心（+0.5 偏移） ----------

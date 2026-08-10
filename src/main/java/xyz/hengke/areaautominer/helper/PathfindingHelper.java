@@ -8,6 +8,7 @@ import net.minecraft.entity.ai.pathing.PathNodeNavigator;
 import net.minecraft.entity.mob.MobEntity;
 import net.minecraft.entity.mob.ZombieEntity;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.chunk.ChunkCache;
 import xyz.hengke.areaautominer.config.MiningConfig;
 
@@ -67,8 +68,9 @@ public class PathfindingHelper {
 
         // 方案A（M3）：寻路范围至少覆盖玩家→目标的水平距离（+2 格余量），
         // 避免目标稍远（> pathFollowRange 默认 32 格）时寻路必然失败、被误判"不可达"而跳过方块
+        Vec3d playerPos = SpatialMath.getPlayerPos(client);
         double distanceToTarget = Math.sqrt(SpatialMath.calculateHorizontalDistanceSquared(
-                client.player.getX(), client.player.getZ(),
+                playerPos.x, playerPos.z,
                 SpatialMath.centerX(target), SpatialMath.centerZ(target)));
         int effectiveRange = Math.max(followRange, (int) Math.ceil(distanceToTarget) + 2);
         if (effectiveRange > MAX_CACHE_RADIUS) effectiveRange = MAX_CACHE_RADIUS;
@@ -76,7 +78,7 @@ public class PathfindingHelper {
         // 1) 确保 / 同步虚拟实体到玩家位置
         MobEntity mob = ensurePhantomMob(client.world);
         mob.refreshPositionAndAngles(
-                client.player.getX(), client.player.getY(), client.player.getZ(),
+                playerPos.x, playerPos.y, playerPos.z,
                 client.player.getYaw(), 0.0f);
 
         // 2) 构造 ChunkCache：以玩家为中心，半径 = min(MAX, max(MIN, effectiveRange))

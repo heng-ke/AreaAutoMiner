@@ -5,8 +5,8 @@ import net.minecraft.entity.ai.pathing.Path;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
 import xyz.hengke.areaautominer.config.MiningConfig;
-import xyz.hengke.areaautominer.context.state.MovementState;
-import xyz.hengke.areaautominer.context.state.SessionState;
+import xyz.hengke.areaautominer.state.MovementState;
+import xyz.hengke.areaautominer.state.SessionState;
 import xyz.hengke.areaautominer.model.DangerType;
 import xyz.hengke.areaautominer.model.MiningState;
 import xyz.hengke.areaautominer.model.WalkResult;
@@ -146,15 +146,16 @@ public class MovementHelper {
 
     /** 基于累计位移的卡住检测：相对锚点移动过小则累计计数；累计位移达显著值才重置锚点 */
     private void updateStuckDetection() {
+        Vec3d playerPos = SpatialMath.getPlayerPos(client);
         // 方案B（M2）：原地转向期间不计卡住、不清零计数——转向是合法状态（XZ 位移必然≈0），
         // 但此前已累计的卡住计数不会被转向"清零掩盖"，顶墙等异常可跨转向持续累计直至触发
         if (movement.isTurningInPlace()) {
-            movement.setLastPlayerX(client.player.getX());
-            movement.setLastPlayerZ(client.player.getZ());
+            movement.setLastPlayerX(playerPos.x);
+            movement.setLastPlayerZ(playerPos.z);
             return;
         }
         double movedDistance = Math.sqrt(SpatialMath.calculateHorizontalDistanceSquared(
-                client.player.getX(), client.player.getZ(),
+                playerPos.x, playerPos.z,
                 movement.getLastPlayerX(), movement.getLastPlayerZ()));
         if (movedDistance < STUCK_MOVEMENT_THRESHOLD) {
             movement.setStuckCounter(movement.getStuckCounter() + 1);
@@ -268,8 +269,9 @@ public class MovementHelper {
 
         // 计算朝向当前节点的目标角度，用于下方"先转向再前进"判定；
         // 实际视角写入由 CameraHelper.smoothFrame 按渲染帧推进（帧级平滑，无 tick 步进）
+        Vec3d playerPos = SpatialMath.getPlayerPos(client);
         float walkYaw = SpatialMath.calculateYawTo(
-                client.player.getX(), client.player.getZ(),
+                playerPos.x, playerPos.z,
                 SpatialMath.centerX(nodePos), SpatialMath.centerZ(nodePos));
         float yawDiff = SpatialMath.normalizeYawDiff(walkYaw - client.player.getYaw());
 
@@ -304,8 +306,9 @@ public class MovementHelper {
     private boolean isShortHopCandidate(BlockPos targetPos) {
         if (targetPos == null || client.world == null) return false;
         if (!client.world.isPosLoaded(targetPos)) return false;
-        double dx = SpatialMath.centerX(targetPos) - client.player.getX();
-        double dz = SpatialMath.centerZ(targetPos) - client.player.getZ();
+        Vec3d playerPos = SpatialMath.getPlayerPos(client);
+        double dx = SpatialMath.centerX(targetPos) - playerPos.x;
+        double dz = SpatialMath.centerZ(targetPos) - playerPos.z;
         if (Math.sqrt(dx * dx + dz * dz) > SHORT_HOP_MAX_DISTANCE) return false;
         if (Math.abs(targetPos.getY() - client.player.getBlockPos().getY()) > SHORT_HOP_MAX_DY) return false;
         return lineOfSightClear(targetPos);
@@ -315,13 +318,12 @@ public class MovementHelper {
     private boolean lineOfSightClear(BlockPos targetPos) {
         Vec3d target = SpatialMath.center(targetPos);
         // 眼高射线：拦截高于眼位的障碍（1.5 格高栅栏等）
-        Vec3d eye = new Vec3d(client.player.getX(),
-                SpatialMath.getPlayerEyeY(client),
-                client.player.getZ());
+        Vec3d eye = SpatialMath.getPlayerEyePos(client);
         if (!ReachChecker.isLineClear(client, eye, target, targetPos)) return false;
         // 地面层射线：拦截 1 格高的矮墙（眼高射线会从其上方越过）；目标低于玩家时跳过
         if (targetPos.getY() >= client.player.getBlockPos().getY()) {
-            Vec3d feet = new Vec3d(client.player.getX(), client.player.getY() + 0.2, client.player.getZ());
+            Vec3d playerPos = SpatialMath.getPlayerPos(client);
+            Vec3d feet = new Vec3d(playerPos.x, playerPos.y + 0.2, playerPos.z);
             Vec3d lowTarget = new Vec3d(SpatialMath.centerX(targetPos), targetPos.getY() + 0.2, SpatialMath.centerZ(targetPos));
             if (!ReachChecker.isLineClear(client, feet, lowTarget, targetPos)) return false;
         }
@@ -337,8 +339,9 @@ public class MovementHelper {
     private WalkResult walkStraight(BlockPos targetPos) {
         movement.setShortHopTarget(targetPos);
 
+        Vec3d playerPos = SpatialMath.getPlayerPos(client);
         float walkYaw = SpatialMath.calculateYawTo(
-                client.player.getX(), client.player.getZ(),
+                playerPos.x, playerPos.z,
                 SpatialMath.centerX(targetPos), SpatialMath.centerZ(targetPos));
         float yawDiff = SpatialMath.normalizeYawDiff(walkYaw - client.player.getYaw());
 
@@ -382,23 +385,26 @@ public class MovementHelper {
         inputHelper.setKeyPressed(client.options.forwardKey, false);
         inputHelper.setKeyPressed(client.options.jumpKey, false);
         movement.setTurningInPlace(true);
-        movement.setLastPlayerX(client.player.getX());
-        movement.setLastPlayerZ(client.player.getZ());
+        Vec3d playerPos = SpatialMath.getPlayerPos(client);
+        movement.setLastPlayerX(playerPos.x);
+        movement.setLastPlayerZ(playerPos.z);
         return true;
     }
 
     /** 玩家到方块中心（XZ 平面）的水平距离（+0.5 = BlockPos 中心偏移） */
     private double horizontalDistanceTo(BlockPos pos) {
+        Vec3d playerPos = SpatialMath.getPlayerPos(client);
         return Math.sqrt(SpatialMath.calculateHorizontalDistanceSquared(
-                client.player.getX(), client.player.getZ(),
+                playerPos.x, playerPos.z,
                 SpatialMath.centerX(pos), SpatialMath.centerZ(pos)));
     }
 
     /** 重置卡住锚点：以当前位置为基准，后续位移与其比较 */
     private void resetStuckAnchor() {
         movement.setStuckCounter(0);
-        movement.setLastPlayerX(client.player.getX());
-        movement.setLastPlayerZ(client.player.getZ());
+        Vec3d playerPos = SpatialMath.getPlayerPos(client);
+        movement.setLastPlayerX(playerPos.x);
+        movement.setLastPlayerZ(playerPos.z);
     }
 
     /**

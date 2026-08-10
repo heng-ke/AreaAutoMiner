@@ -11,7 +11,6 @@ import xyz.hengke.areaautominer.model.MinerMod;
  * <ul>
  *   <li>maxAirSkipPerTick=0 → FINDING 每 tick 跳过 0 个空气即返回，游标永不前进（软锁死循环）</li>
  *   <li>maxReachSquared&lt;0 → 全部方块判 out-of-reach → 触发 F1 不可达死循环</li>
- *   <li>rollbackCheckInterval&lt;0 → 每 tick 都触发全量回滚扫描（性能）</li>
  * </ul>
  * 策略：有限值钳制到 [min,max] 保留用户意图；NaN/Infinity 无法比较，恢复默认值。</p>
  */
@@ -45,10 +44,6 @@ public final class MiningConfigValidator {
         c.minToolDurability = clampInt(c.minToolDurability, 0, 100_000); // 0 = 关闭耐久检查（合法）
         c.facingThresholdDegrees = clampDouble(c.facingThresholdDegrees, 0.1, 90.0, 5.0);
         c.reFacingThresholdDegrees = clampDouble(c.reFacingThresholdDegrees, 0.1, 180.0, 15.0);
-        // 回滚
-        c.maxRollbackRetries = clampInt(c.maxRollbackRetries, 0, 100);  // 0 = 不执行回滚重扫（合法）
-        c.maxMinedPositions = clampInt(c.maxMinedPositions, 0, 1_000_000);  // 0 = 不记录（合法）；上限防内存膨胀
-        c.rollbackCheckInterval = clampInt(c.rollbackCheckInterval, 1, 100_000); // >=1 防每 tick 全扫
     }
 
     /** 整数钳制到 [min, max]（有限 int 无需 NaN 检查） */

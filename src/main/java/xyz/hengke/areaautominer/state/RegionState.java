@@ -1,4 +1,4 @@
-package xyz.hengke.areaautominer.context.state;
+package xyz.hengke.areaautominer.state;
 
 import net.minecraft.util.math.BlockPos;
 

@@ -1,4 +1,4 @@
-package xyz.hengke.areaautominer.context.state;
+package xyz.hengke.areaautominer.state;
 
 /**
  * 转向状态：视角转向的目标角度，由 CameraHelper 写入并逐步逼近。

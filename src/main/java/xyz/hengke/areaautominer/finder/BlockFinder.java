@@ -2,11 +2,11 @@ package xyz.hengke.areaautominer.finder;
 
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Vec3d;
 import xyz.hengke.areaautominer.config.MiningConfig;
-import xyz.hengke.areaautominer.context.state.FacingState;
-import xyz.hengke.areaautominer.context.state.MovementState;
-import xyz.hengke.areaautominer.context.state.SessionState;
-import xyz.hengke.areaautominer.context.state.TraversalState;
+import xyz.hengke.areaautominer.state.FacingState;
+import xyz.hengke.areaautominer.state.SessionState;
+import xyz.hengke.areaautominer.state.TraversalState;
 import xyz.hengke.areaautominer.helper.AdvanceCoordinator;
 import xyz.hengke.areaautominer.helper.CameraHelper;
 import xyz.hengke.areaautominer.helper.ReachChecker;
@@ -63,8 +63,8 @@ public class BlockFinder {
         }
 
         if (!ReachChecker.isBlockWithinReach(client, targetPos, config)) {
-            // F1 修复：同一目标连续多次进入 WALKING（水平已近但挖不到，垂直超距/无视线）→ 跳过，防死循环
-            if (walkRequester.requestWalkOrSkip(targetPos, client.player.getX(), client.player.getZ())
+            Vec3d playerPos = SpatialMath.getPlayerPos(client);
+            if (walkRequester.requestWalkOrSkip(targetPos, playerPos.x, playerPos.z)
                     == WalkRequester.Result.SKIPPED) {
                 advanceCoordinator.advanceAfterSkipped(targetPos);
                 return;

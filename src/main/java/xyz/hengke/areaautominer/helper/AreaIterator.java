@@ -2,15 +2,15 @@ package xyz.hengke.areaautominer.helper;
 
 import net.minecraft.util.math.BlockPos;
 import xyz.hengke.areaautominer.config.MiningConfig;
-import xyz.hengke.areaautominer.context.state.RegionState;
-import xyz.hengke.areaautominer.context.state.TraversalState;
+import xyz.hengke.areaautominer.state.RegionState;
+import xyz.hengke.areaautominer.state.TraversalState;
 import xyz.hengke.areaautominer.model.MinerMod;
 
 /**
  * 蛇形遍历驱动：只依赖区域边界与遍历游标，不感知其他状态。
  *
- * <p>方案 9：回滚恢复点逻辑已上移至 {@link AdvanceCoordinator}，本类回归纯遍历
- * （移除 RollbackState 依赖）；{@link #seek} 提供游标跳转原语供协调者使用。</p>
+ * <p>方案 9 + 方案 B：回滚恢复点/重扫逻辑已随回滚体系移除（本类不持有 RollbackState，
+ * 亦无 seek/resetToStart 专属方法），保持纯遍历。</p>
  */
 public class AreaIterator {
     private final RegionState region;
@@ -111,29 +111,7 @@ public class AreaIterator {
         }
     }
 
-    /** 跳转游标到指定位置（回滚恢复点由 AdvanceCoordinator 调用） */
-    public void seek(BlockPos pos) {
-        traversal.setCurrentX(pos.getX());
-        traversal.setCurrentY(pos.getY());
-        traversal.setCurrentZ(pos.getZ());
-    }
-
     public BlockPos getCurrentPos() {
         return traversal.getPosition();
-    }
-
-    /**
-     * 重置遍历游标到区域起点（回滚重扫用，H1 方案A）：
-     * TOP_DOWN 从最高层 (minX, maxY, minZ) 开始，BOTTOM_UP 从最低层 (minX, minY, minZ) 开始。
-     * 调用方需确保此时遍历已结束（游标在区域外），重置后重新遍历能扫到区域内的回滚方块。
-     */
-    public void resetToStart() {
-        if (config.minerMod == MinerMod.FROM_TOP_DOWN) {
-            traversal.setCurrentY(region.getMaxY());
-        } else {
-            traversal.setCurrentY(region.getMinY());
-        }
-        traversal.setCurrentX(region.getMinX());
-        traversal.setCurrentZ(region.getMinZ());
     }
 }

@@ -15,9 +15,8 @@
 - **类人行为模拟** —— 增量追踪式平滑视角转动（无轨迹插值抖动）、自然挥臂动画、模拟按键输入，以及与原版生存一致的水平 4.5 格触及距离。
 - **智能移动** —— 基于 vanilla A\* 寻路（`net.minecraft.entity.ai.pathing`）规划路径并自动绕开障碍/悬崖、岩浆与虚空规避、卡住检测以及行走重试。
 - **生存模式感知** —— 正确使用 `attackBlock` + `updateBlockBreakingProgress` 累积进度、工具耐久检测，并支持创造模式瞬挖。
-- **回滚检测** —— 定期重新扫描区域，重新挖掘被服务器回滚的方块。
 - **安全停止** —— 玩家死亡、游戏暂停或断开连接时自动停止。
-- **全可配置** —— 所有时序、距离、挖掘、重试与回滚参数均可在游戏内通过 Mod Menu + Cloth Config 调整。
+- **全可配置** —— 所有时序、距离、挖掘与重试参数均可在游戏内通过 Mod Menu + Cloth Config 调整。
 
 ## 使用方法
 
@@ -93,15 +92,6 @@
 | 视角对准阈值 | 5.0 | 视角偏差小于此角度（度）即视为已对准，直接开始挖掘 |
 | 挖掘重对准阈值 | 15.0 | 挖掘过程中视角偏差超过此角度（度）时重新转向 |
 
-### 回滚检测
-
-| 选项 | 默认值 | 说明 |
-| --- | --- | --- |
-| 回滚检测 | true | 重新扫描被服务器回滚的方块 |
-| 最大回滚重试次数 | 3 | 回滚后重新挖掘的最大次数（0 = 不执行回滚重扫） |
-| 回滚检测间隔 | 20 | 两次回滚检测间隔（ticks，20 = 1 秒） |
-| 已挖记录上限 | 50000 | 已挖方块记录的最大数量，超过后回滚检测仅覆盖已记录部分 |
-
 ### 调试配置
 
 | 选项 | 默认值 | 说明 |
@@ -121,7 +111,7 @@ IDLE → FINDING_BLOCK → WALKING_TO_BLOCK → FACING_BLOCK → BREAKING →（
 3. **FACING_BLOCK** —— [CameraHelper](src/main/java/xyz/hengke/areaautominer/helper/CameraHelper.java) 通过增量追踪器将视角转向目标（角速度限制 + 收敛判定完成，无轨迹插值抖动）。
 4. **BREAKING** —— [BreakingHelper](src/main/java/xyz/hengke/areaautominer/helper/BreakingHelper.java) 破坏方块（创造模式瞬挖，或生存模式 `attackBlock` + `updateBlockBreakingProgress`），方块变为空气后推进到下一个。
 
-共享的 [MiningContext](src/main/java/xyz/hengke/areaautominer/context/MiningContext.java) 聚合 7 个领域状态对象（会话/区域/遍历/转向/行走/挖掘/回滚），各 Helper 只依赖自己需要的状态；[AreaIterator](src/main/java/xyz/hengke/areaautominer/helper/AreaIterator.java) 按所选挖掘模式遍历长方体。
+6 个领域状态对象（会话/区域/遍历/转向/行走/挖掘）由组合根 [MinerComponents](src/main/java/xyz/hengke/areaautominer/di/MinerComponents.java) 统一创建、按需注入各 Helper（无中间层，会话归零由 [StateResetter](src/main/java/xyz/hengke/areaautominer/state/StateResetter.java) 完成）；[AreaIterator](src/main/java/xyz/hengke/areaautominer/helper/AreaIterator.java) 按所选挖掘模式遍历长方体。
 
 ## 项目结构
 
@@ -129,19 +119,17 @@ IDLE → FINDING_BLOCK → WALKING_TO_BLOCK → FACING_BLOCK → BREAKING →（
 src/main/java/xyz/hengke/areaautominer/
 ├── AreaAutoMiner.java            # 通用入口
 ├── AreaAutoMinerClient.java      # 客户端入口（输入、渲染、tick）
-├── client/                       # SelectionTool 选区、LifecycleManager 死亡/暂停检测
+├── client/                       # SelectionTool —— 选区
 ├── config/                       # 配置模型、Cloth Config 界面、Mod Menu 集成
-├── context/                      # MiningContext 组合根
-│   └── state/                    # 按领域内聚的 7 个状态对象（区域/遍历/转向/行走/挖掘/回滚/会话）
 ├── controller/                   # MiningController —— 状态机驱动
 ├── di/                           # MinerComponents —— 手动依赖组合根（集中装配）
 ├── finder/                       # BlockFinder —— 下一方块选择
-├── helper/                       # 相机、移动、挖掘、输入、区域迭代、空间工具
-├── lifecycle/                    # SessionLifecycle —— 会话收尾统一出口
-├── listener/                     # MiningListener —— 事件回调（default 空实现）
+├── helper/                       # 相机、移动、挖掘、输入、遍历、空间工具、行走断路器
+├── lifecycle/                    # SessionLifecycle / PlayerLifecycleManager —— 会话收尾与玩家生命周期
 ├── model/                        # MinerMod 与 MiningState 枚举
 ├── render/                       # RegionRenderer —— 区域线框
-└── service/                      # 通知、消息文案、完成服务
+├── service/                      # 通知、消息文案、完成服务
+└── state/                        # 6 个状态对象 + StateResetter（区域/遍历/转向/行走/挖掘/会话）
 ```
 
 ## 技术说明

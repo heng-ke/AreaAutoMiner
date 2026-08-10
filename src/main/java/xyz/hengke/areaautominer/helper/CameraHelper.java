@@ -5,10 +5,11 @@ import net.minecraft.entity.ai.pathing.Path;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.MathHelper;
+import net.minecraft.util.math.Vec3d;
 import xyz.hengke.areaautominer.config.MiningConfig;
-import xyz.hengke.areaautominer.context.state.FacingState;
-import xyz.hengke.areaautominer.context.state.MovementState;
-import xyz.hengke.areaautominer.context.state.SessionState;
+import xyz.hengke.areaautominer.state.FacingState;
+import xyz.hengke.areaautominer.state.MovementState;
+import xyz.hengke.areaautominer.state.SessionState;
 import xyz.hengke.areaautominer.model.MiningState;
 import xyz.hengke.areaautominer.service.NotificationService;
 
@@ -205,8 +206,9 @@ public class CameraHelper {
             }
             if (nodePos == null) nodePos = movement.getShortHopTarget();
             if (nodePos == null) return;
+            Vec3d playerPos = SpatialMath.getPlayerPos(client);
             float walkYaw = SpatialMath.calculateYawTo(
-                    client.player.getX(), client.player.getZ(),
+                    playerPos.x, playerPos.z,
                     SpatialMath.centerX(nodePos), SpatialMath.centerZ(nodePos));
             float yawDiff = SpatialMath.normalizeYawDiff(walkYaw - client.player.getYaw());
             client.player.setYaw(client.player.getYaw() + clampStep(yawDiff * alpha, maxYawStep));
@@ -249,11 +251,12 @@ public class CameraHelper {
     }
 
     private void calculateTargetLookToPoint(double targetX, double targetY, double targetZ) {
-        double lookDx = targetX - client.player.getX();
+        Vec3d playerPos = SpatialMath.getPlayerPos(client);
+        double lookDx = targetX - playerPos.x;
         double lookDy = targetY - SpatialMath.getPlayerEyeY(client);
-        double lookDz = targetZ - client.player.getZ();
+        double lookDz = targetZ - playerPos.z;
         facing.setTargetYaw(SpatialMath.calculateYawTo(
-                client.player.getX(), client.player.getZ(), targetX, targetZ));
+                playerPos.x, playerPos.z, targetX, targetZ));
         facing.setTargetPitch((float) -Math.atan2(lookDy, Math.sqrt(lookDx * lookDx + lookDz * lookDz)) * (180.0F / (float) Math.PI));
     }
 

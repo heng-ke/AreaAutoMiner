@@ -85,21 +85,6 @@ public class MiningConfig implements ConfigData {
     @ConfigEntry.Gui.Tooltip(count = 1)
     public double reFacingThresholdDegrees = 15.0;
 
-    // ==================== 回滚检测 ====================
-    @ConfigEntry.Category("回滚检测")
-    @ConfigEntry.Gui.Tooltip(count = 1)
-    public boolean enableRollbackDetection = true;
-    @ConfigEntry.Category("回滚检测")
-    @ConfigEntry.Gui.Tooltip(count = 1)
-    public int maxRollbackRetries = 3;
-    // 已挖方块记录上限，超限后回滚检测静默降级
-    @ConfigEntry.Category("回滚检测")
-    @ConfigEntry.Gui.Tooltip(count = 1)
-    public int maxMinedPositions = 50000;
-    @ConfigEntry.Category("回滚检测")
-    @ConfigEntry.Gui.Tooltip(count = 1)
-    public int rollbackCheckInterval = 20;
-
     // ==================== 调试配置 ====================
     @ConfigEntry.Category("调试配置")
     @ConfigEntry.Gui.Tooltip(count = 1)

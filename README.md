@@ -16,9 +16,8 @@ It is not recommended to use it on public or third-party servers. Before attempt
 - **Human-like behavior** — incremental per-tick view tracking (no trajectory jitter), natural swing animations, simulated key presses, and a 4.5-block reach limit matching vanilla survival.
 - **Smart movement** — vanilla A* pathfinding (`net.minecraft.entity.ai.pathing`) plans a full route that auto-avoids obstacles/cliffs, plus lava & void avoidance, stuck detection, and walking retries.
 - **Survival-aware mining** — proper `attackBlock` + `updateBlockBreakingProgress` progression, tool durability checks, plus creative-mode instant break.
-- **Rollback detection** — periodically re-scans the area to re-mine any blocks rolled back by the server.
 - **Safety stops** — automatically halts on player death, game pause, or disconnect.
-- **Fully configurable** — every timing, distance, mining, retry, and rollback parameter can be tuned in-game via Mod Menu + Cloth Config.
+- **Fully configurable** — every timing, distance, mining, and retry parameter can be tuned in-game via Mod Menu + Cloth Config.
 
 ## Usage
 
@@ -94,15 +93,6 @@ Open **Mods → AreaAutoMiner → Config** (requires Mod Menu + Cloth Config), o
 | Facing threshold | 5.0 | Max remaining deviation (degrees) to be considered aligned and start breaking |
 | Re-facing threshold | 15.0 | Deviation (degrees) during breaking that interrupts mining to re-face |
 
-### Rollback detection
-
-| Option | Default | Description |
-| --- | --- | --- |
-| Rollback detection | true | Re-scan for server-rolled-back blocks |
-| Max rollback retries | 3 | Max re-mine attempts on rollback (0 = no re-scan) |
-| Rollback check interval | 20 | Ticks between rollback scans (20 = 1s) |
-| Max mined positions | 50000 | Max recorded mined blocks; rollback detection covers only recorded ones beyond this |
-
 ### Debug
 
 | Option | Default | Description |
@@ -122,7 +112,7 @@ IDLE → FINDING_BLOCK → WALKING_TO_BLOCK → FACING_BLOCK → BREAKING → (l
 3. **FACING_BLOCK** — [CameraHelper](src/main/java/xyz/hengke/areaautominer/helper/CameraHelper.java) rotates the view toward the target with an incremental per-tick tracker (angular velocity limit + convergence-based finish; no interpolation jitter).
 4. **BREAKING** — [BreakingHelper](src/main/java/xyz/hengke/areaautominer/helper/BreakingHelper.java) breaks the block (creative instant-break, or survival `attackBlock` + `updateBlockBreakingProgress`), then advances to the next block once it becomes air.
 
-A [MiningContext](src/main/java/xyz/hengke/areaautominer/context/MiningContext.java) composition root aggregates 7 domain-cohesive state objects (region / traversal / facing / movement / breaking / rollback / session), and [AreaIterator](src/main/java/xyz/hengke/areaautominer/helper/AreaIterator.java) walks the cuboid according to the selected mining mode.
+The 6 domain-cohesive state objects (region / traversal / facing / movement / breaking / session) are created by the composition root [MinerComponents](src/main/java/xyz/hengke/areaautominer/di/MinerComponents.java) and injected per-helper (no intermediate layer; session reset is handled by [StateResetter](src/main/java/xyz/hengke/areaautominer/state/StateResetter.java)), and [AreaIterator](src/main/java/xyz/hengke/areaautominer/helper/AreaIterator.java) walks the cuboid according to the selected mining mode.
 
 ## Project Structure
 
@@ -130,19 +120,17 @@ A [MiningContext](src/main/java/xyz/hengke/areaautominer/context/MiningContext.j
 src/main/java/xyz/hengke/areaautominer/
 ├── AreaAutoMiner.java            # Common entrypoint
 ├── AreaAutoMinerClient.java      # Client entrypoint (input, render, tick)
-├── client/                       # SelectionTool (area picking), LifecycleManager (death/pause)
+├── client/                       # SelectionTool (area picking)
 ├── config/                       # Config model, Cloth Config screen, Mod Menu integration
-├── context/                      # MiningContext composition root
-│   └── state/                    # 7 domain state objects (region/traversal/facing/movement/breaking/rollback/session)
 ├── controller/                   # MiningController — state machine driver
 ├── di/                           # MinerComponents — manual dependency composition root
 ├── finder/                       # BlockFinder — next-block selection
-├── helper/                       # Camera, Movement, Breaking, Input, Area iterator, Spatial utils
-├── lifecycle/                    # SessionLifecycle — unified session teardown
-├── listener/                     # MiningListener — event callbacks (default no-op)
+├── helper/                       # Camera, Movement, Breaking, Input, Traversal, Spatial utils, Walk cycle breaker
+├── lifecycle/                    # SessionLifecycle / PlayerLifecycleManager — session teardown & player lifecycle
 ├── model/                        # MinerMod & MiningState enums
 ├── render/                       # RegionRenderer — area outline
-└── service/                      # Notification, message constants, completion services
+├── service/                      # Notification, message constants, completion services
+└── state/                        # 6 state objects + StateResetter (region/traversal/facing/movement/breaking/session)
 ```
 
 ## Technical Notes

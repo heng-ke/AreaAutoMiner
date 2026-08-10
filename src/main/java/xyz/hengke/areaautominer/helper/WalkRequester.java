@@ -1,8 +1,8 @@
 package xyz.hengke.areaautominer.helper;
 
 import net.minecraft.util.math.BlockPos;
-import xyz.hengke.areaautominer.context.state.MovementState;
-import xyz.hengke.areaautominer.context.state.SessionState;
+import xyz.hengke.areaautominer.state.MovementState;
+import xyz.hengke.areaautominer.state.SessionState;
 import xyz.hengke.areaautominer.model.MiningState;
 
 /**

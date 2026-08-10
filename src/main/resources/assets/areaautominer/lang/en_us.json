@@ -10,7 +10,6 @@
   "text.autoconfig.areaautominer.category.距离配置": "Distance",
   "text.autoconfig.areaautominer.category.重试配置": "Retry",
   "text.autoconfig.areaautominer.category.挖掘配置": "Mining",
-  "text.autoconfig.areaautominer.category.回滚检测": "Rollback Detection",
   "text.autoconfig.areaautominer.category.调试配置": "Debug",
 
   "text.autoconfig.areaautominer.option.moveWaitTicks": "Move Wait Ticks",
@@ -29,10 +28,6 @@
   "text.autoconfig.areaautominer.option.minToolDurability": "Min Tool Durability",
   "text.autoconfig.areaautominer.option.facingThresholdDegrees": "Facing Threshold (deg)",
   "text.autoconfig.areaautominer.option.reFacingThresholdDegrees": "Re-facing Threshold (deg)",
-  "text.autoconfig.areaautominer.option.enableRollbackDetection": "Enable Rollback Detection",
-  "text.autoconfig.areaautominer.option.maxRollbackRetries": "Max Rollback Retries",
-  "text.autoconfig.areaautominer.option.maxMinedPositions": "Max Mined Positions",
-  "text.autoconfig.areaautominer.option.rollbackCheckInterval": "Rollback Check Interval",
   "text.autoconfig.areaautominer.option.debug": "Debug Mode",
 
   "text.autoconfig.areaautominer.option.moveWaitTicks.@Tooltip": "Ticks to wait for movement to stabilize",
@@ -55,9 +50,5 @@
   "text.autoconfig.areaautominer.option.facingThresholdDegrees.@Tooltip[0]": "Angle deviation below this (deg) counts as aligned, mining starts immediately",
   "text.autoconfig.areaautominer.option.facingThresholdDegrees.@Tooltip[1]": "Smaller is more precise but increases facing time",
   "text.autoconfig.areaautominer.option.reFacingThresholdDegrees.@Tooltip": "Interrupt mining and re-face when deviation exceeds this (deg)",
-  "text.autoconfig.areaautominer.option.enableRollbackDetection.@Tooltip": "Enable rollback detection; disabling improves performance but may miss server rollbacks",
-  "text.autoconfig.areaautominer.option.maxRollbackRetries.@Tooltip": "Max rescans when rollback is detected (0 disables rescan, same as disabling detection)",
-  "text.autoconfig.areaautominer.option.maxMinedPositions.@Tooltip": "Max recorded mined positions; beyond this, recording stops and detection covers only recorded part",
-  "text.autoconfig.areaautominer.option.rollbackCheckInterval.@Tooltip": "Interval between rollback checks (ticks, 20 = 1 second)",
   "text.autoconfig.areaautominer.option.debug.@Tooltip": "Enable debug log output"
 }

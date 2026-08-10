@@ -4,11 +4,12 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.util.Hand;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
+import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.GameMode;
 import xyz.hengke.areaautominer.config.MiningConfig;
-import xyz.hengke.areaautominer.context.state.BreakingState;
-import xyz.hengke.areaautominer.context.state.FacingState;
-import xyz.hengke.areaautominer.context.state.SessionState;
+import xyz.hengke.areaautominer.state.BreakingState;
+import xyz.hengke.areaautominer.state.FacingState;
+import xyz.hengke.areaautominer.state.SessionState;
 import xyz.hengke.areaautominer.lifecycle.SessionLifecycle;
 import xyz.hengke.areaautominer.model.BreakOutcome;
 import xyz.hengke.areaautominer.model.MiningState;
@@ -80,7 +81,8 @@ public class BreakingHelper {
         // === 超出挖掘范围或无视线 → 重新行走 ===
         if (!ReachChecker.isBlockWithinReach(client, targetPos, config)) {
             // F1 修复：同一目标连续多次进入 WALKING（水平已近但垂直超距/无视线）→ 跳过，防死循环
-            if (walkRequester.requestWalkOrSkip(targetPos, client.player.getX(), client.player.getZ())
+            Vec3d playerPos = SpatialMath.getPlayerPos(client);
+            if (walkRequester.requestWalkOrSkip(targetPos, playerPos.x, playerPos.z)
                     == WalkRequester.Result.SKIPPED) {
                 notificationService.logDebug("目标方块多次无法到达，跳过: " + targetPos);
                 return BreakOutcome.SKIPPED;

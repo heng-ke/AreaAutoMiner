@@ -10,7 +10,6 @@
   "text.autoconfig.areaautominer.category.距离配置": "距离配置",
   "text.autoconfig.areaautominer.category.重试配置": "重试配置",
   "text.autoconfig.areaautominer.category.挖掘配置": "挖掘配置",
-  "text.autoconfig.areaautominer.category.回滚检测": "回滚检测",
   "text.autoconfig.areaautominer.category.调试配置": "调试配置",
 
   "text.autoconfig.areaautominer.option.moveWaitTicks": "移动等待 ticks",
@@ -29,10 +28,6 @@
   "text.autoconfig.areaautominer.option.minToolDurability": "工具耐久下限",
   "text.autoconfig.areaautominer.option.facingThresholdDegrees": "视角对准阈值",
   "text.autoconfig.areaautominer.option.reFacingThresholdDegrees": "挖掘重对准阈值",
-  "text.autoconfig.areaautominer.option.enableRollbackDetection": "启用回滚检测",
-  "text.autoconfig.areaautominer.option.maxRollbackRetries": "最大回滚重试次数",
-  "text.autoconfig.areaautominer.option.maxMinedPositions": "已挖记录上限",
-  "text.autoconfig.areaautominer.option.rollbackCheckInterval": "回滚检测间隔",
   "text.autoconfig.areaautominer.option.debug": "调试模式",
 
   "text.autoconfig.areaautominer.option.moveWaitTicks.@Tooltip": "移动后等待稳定的时间（单位：ticks）",
@@ -55,9 +50,5 @@
   "text.autoconfig.areaautominer.option.facingThresholdDegrees.@Tooltip[0]": "视角与目标的偏差小于此角度（度）即视为已对准，直接开始挖掘",
   "text.autoconfig.areaautominer.option.facingThresholdDegrees.@Tooltip[1]": "越小越精确，但会增加转向耗时",
   "text.autoconfig.areaautominer.option.reFacingThresholdDegrees.@Tooltip": "挖掘过程中视角偏差超过此角度（度）时中断挖掘重新转向",
-  "text.autoconfig.areaautominer.option.enableRollbackDetection.@Tooltip": "启用/禁用回滚检测，禁用后可提升性能但可能丢失被服务器回滚的方块",
-  "text.autoconfig.areaautominer.option.maxRollbackRetries.@Tooltip": "回滚检测发现方块未挖时的最大重试次数（设为 0 表示不执行回滚重扫，效果等同于关闭回滚检测）",
-  "text.autoconfig.areaautominer.option.maxMinedPositions.@Tooltip": "已挖方块记录的最大数量，超过后停止记录、回滚检测仅覆盖已记录部分（大区域建议调大）",
-  "text.autoconfig.areaautominer.option.rollbackCheckInterval.@Tooltip": "两次回滚检测之间的时间间隔（单位：ticks，20 tick = 1 秒）",
   "text.autoconfig.areaautominer.option.debug.@Tooltip": "启用调试日志输出"
 }

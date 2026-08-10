@@ -1,6 +1,6 @@
 package xyz.hengke.areaautominer.lifecycle;
 
-import xyz.hengke.areaautominer.context.state.SessionState;
+import xyz.hengke.areaautominer.state.SessionState;
 import xyz.hengke.areaautominer.helper.InputHelper;
 import xyz.hengke.areaautominer.helper.PathfindingHelper;
 import xyz.hengke.areaautominer.model.MiningState;
@@ -20,7 +20,7 @@ public class SessionLifecycle {
         this.pathfindingHelper = pathfindingHelper;
     }
 
-    /** 结束挖掘会话：关闭会话、回到 IDLE、释放按键、清理寻路资源 */
+    /** 结束挖掘会话：关闭挖掘状态、回到 IDLE、释放按键、清理寻路资源 */
     public void teardown() {
         session.setMining(false);
         session.setState(MiningState.IDLE);
