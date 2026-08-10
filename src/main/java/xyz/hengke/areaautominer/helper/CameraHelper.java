@@ -6,7 +6,6 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.MathHelper;
 import xyz.hengke.areaautominer.config.MiningConfig;
-import xyz.hengke.areaautominer.context.state.BreakingState;
 import xyz.hengke.areaautominer.context.state.FacingState;
 import xyz.hengke.areaautominer.context.state.MovementState;
 import xyz.hengke.areaautominer.context.state.SessionState;
@@ -64,7 +63,6 @@ public class CameraHelper {
     private final SessionState session;
     private final MovementState movement;
     private final FacingState facing;
-    private final BreakingState breaking;
     private final InputHelper inputHelper;
     private final NotificationService notificationService;
 
@@ -77,14 +75,13 @@ public class CameraHelper {
     private float lastTickProgress = 0.0F;
 
     public CameraHelper(MinecraftClient client, MiningConfig config, SessionState session, MovementState movement,
-                        FacingState facing, BreakingState breaking,
+                        FacingState facing,
                         InputHelper inputHelper, NotificationService notificationService) {
         this.client = client;
         this.config = config;
         this.session = session;
         this.movement = movement;
         this.facing = facing;
-        this.breaking = breaking;
         this.inputHelper = inputHelper;
         this.notificationService = notificationService;
     }
@@ -125,9 +122,8 @@ public class CameraHelper {
         if (faceTicks == 0) beginFacing();
         faceTicks++;
 
-        float yawDiff = Math.abs(SpatialHelper.normalizeYawDiff(
-                facing.getTargetYaw() - client.player.getYaw()));
-        float pitchDiff = Math.abs(facing.getTargetPitch() - client.player.getPitch());
+        float yawDiff = SpatialMath.yawDiffTo(facing, client);
+        float pitchDiff = SpatialMath.pitchDiffTo(facing, client);
 
         // ---- 收敛判定:指数平滑单调收敛,单次低于阈值即完成(无需连续防抖) ----
         if (yawDiff <= CONVERGE_EPS && pitchDiff <= CONVERGE_EPS) {
@@ -193,30 +189,35 @@ public class CameraHelper {
             // 面向方块:yaw + pitch
             float currentYaw = client.player.getYaw();
             float currentPitch = client.player.getPitch();
-            float yawDiff = SpatialHelper.normalizeYawDiff(facing.getTargetYaw() - currentYaw);
+            float yawDiff = SpatialMath.normalizeYawDiff(facing.getTargetYaw() - currentYaw);
             float pitchDiff = facing.getTargetPitch() - currentPitch;
 
             client.player.setYaw(currentYaw + clampStep(yawDiff * alpha, maxYawStep));
             client.player.setPitch(MathHelper.clamp(
                     currentPitch + clampStep(pitchDiff * alpha, MAX_PITCH_SPEED * dt), -90.0F, 90.0F));
         } else {
-            // 行走转向:仅 yaw,目标 = 当前寻路节点方向
+            // 行走转向：仅 yaw，目标 = 当前寻路节点方向；
+            // 贪心直走（无 Path）时回退到 MovementState.shortHopTarget，保证同样帧级平滑
             Path path = movement.getCurrentPath();
-            if (path == null || path.isFinished()) return;
-            BlockPos nodePos = path.getCurrentNodePos();
+            BlockPos nodePos = null;
+            if (path != null && !path.isFinished()) {
+                nodePos = path.getCurrentNodePos();
+            }
+            if (nodePos == null) nodePos = movement.getShortHopTarget();
             if (nodePos == null) return;
-            float walkYaw = SpatialHelper.calculateYawTo(
+            float walkYaw = SpatialMath.calculateYawTo(
                     client.player.getX(), client.player.getZ(),
-                    nodePos.getX() + 0.5, nodePos.getZ() + 0.5);
-            float yawDiff = SpatialHelper.normalizeYawDiff(walkYaw - client.player.getYaw());
+                    SpatialMath.centerX(nodePos), SpatialMath.centerZ(nodePos));
+            float yawDiff = SpatialMath.normalizeYawDiff(walkYaw - client.player.getYaw());
             client.player.setYaw(client.player.getYaw() + clampStep(yawDiff * alpha, maxYawStep));
         }
     }
 
-    /** 收敛 → 切入挖掘状态(统一出口,避免重复) */
+    /**
+     * 收敛 → 切入挖掘状态（方案 C2：挖掘会话初始化 beginBreakSession 由 Controller
+     * 在状态转移时统一执行，本类仅做状态机转移，不再跨域写 BreakingState）。
+     */
     private void finishFacing() {
-        breaking.setFirstBreakTick(true);
-        breaking.setBreakTicks(0);
         session.setState(MiningState.BREAKING);
         notificationService.logDebug("转向完成，开始挖掘");
     }
@@ -224,18 +225,18 @@ public class CameraHelper {
     // ==================== 目标角度计算 ====================
 
     public void calculateTargetLook(BlockPos targetPos) {
-        Direction visibleFace = SpatialHelper.getVisibleFace(client, targetPos);
+        Direction visibleFace = ReachChecker.getVisibleFace(client, targetPos);
         if (visibleFace != null) {
             calculateTargetLookToFace(targetPos, visibleFace);
         } else {
-            calculateTargetLookToPoint(targetPos.getX() + 0.5, targetPos.getY() + 0.5, targetPos.getZ() + 0.5);
+            calculateTargetLookToPoint(SpatialMath.centerX(targetPos), SpatialMath.centerY(targetPos), SpatialMath.centerZ(targetPos));
         }
     }
 
     public void calculateTargetLookToFace(BlockPos targetPos, Direction face) {
-        double x = targetPos.getX() + 0.5;
-        double y = targetPos.getY() + 0.5;
-        double z = targetPos.getZ() + 0.5;
+        double x = SpatialMath.centerX(targetPos);
+        double y = SpatialMath.centerY(targetPos);
+        double z = SpatialMath.centerZ(targetPos);
         switch (face) {
             case UP:    y = targetPos.getY() + 0.9; break;
             case DOWN:  y = targetPos.getY() + 0.1; break;
@@ -249,9 +250,9 @@ public class CameraHelper {
 
     private void calculateTargetLookToPoint(double targetX, double targetY, double targetZ) {
         double lookDx = targetX - client.player.getX();
-        double lookDy = targetY - (client.player.getY() + client.player.getEyeHeight(client.player.getPose()));
+        double lookDy = targetY - SpatialMath.getPlayerEyeY(client);
         double lookDz = targetZ - client.player.getZ();
-        facing.setTargetYaw(SpatialHelper.calculateYawTo(
+        facing.setTargetYaw(SpatialMath.calculateYawTo(
                 client.player.getX(), client.player.getZ(), targetX, targetZ));
         facing.setTargetPitch((float) -Math.atan2(lookDy, Math.sqrt(lookDx * lookDx + lookDz * lookDz)) * (180.0F / (float) Math.PI));
     }

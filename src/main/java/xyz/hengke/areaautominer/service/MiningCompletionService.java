@@ -11,7 +11,8 @@ import xyz.hengke.areaautominer.lifecycle.SessionLifecycle;
 import xyz.hengke.areaautominer.model.MiningState;
 
 /**
- * 挖掘完成与方块事件：回滚校验、完成收尾、已挖/跳过事件。
+ * 挖掘完成与回滚编排：回滚校验、完成收尾、已挖/跳过事件（事件上报已委托
+ * {@link BlockEventReporter}，方案 8）。
  * 依赖的状态对象:RollbackState(回滚计数/已挖集合)、SessionState(会话/监听器)、BreakingState(最近挖掉方块)。
  */
 public class MiningCompletionService {
@@ -23,11 +24,12 @@ public class MiningCompletionService {
     private final NotificationService notificationService;
     private final SessionLifecycle lifecycle;
     private final AreaIterator areaIterator;
+    private final BlockEventReporter blockEventReporter;
 
     public MiningCompletionService(MinecraftClient client, MiningConfig config,
                                    RollbackState rollback, SessionState session, BreakingState breaking,
                                    NotificationService notificationService, SessionLifecycle lifecycle,
-                                   AreaIterator areaIterator) {
+                                   AreaIterator areaIterator, BlockEventReporter blockEventReporter) {
         this.client = client;
         this.config = config;
         this.rollback = rollback;
@@ -36,6 +38,7 @@ public class MiningCompletionService {
         this.notificationService = notificationService;
         this.lifecycle = lifecycle;
         this.areaIterator = areaIterator;
+        this.blockEventReporter = blockEventReporter;
     }
 
     public void completeMining() {
@@ -89,18 +92,15 @@ public class MiningCompletionService {
         return true;
     }
 
+    /** 方块被跳过：事件上报委托 BlockEventReporter（方案 8） */
     public void onBlockSkipped(BlockPos pos) {
-        if (session.getListener() != null) {
-            session.getListener().onBlockSkipped(pos);
-        }
-        notificationService.sendMessage(String.format(Messages.BLOCK_SKIPPED, pos.getX(), pos.getY(), pos.getZ()));
+        blockEventReporter.reportSkipped(pos);
     }
 
+    /** 方块被挖掉：记录回滚/挖掘数据 + 事件上报委托 BlockEventReporter（方案 8） */
     public void onBlockMined(BlockPos pos) {
         breaking.setLastMinedPos(new BlockPos(pos));
         rollback.addMinedPosition(pos, config.maxMinedPositions);
-        if (session.getListener() != null) {
-            session.getListener().onBlockMined(pos);
-        }
+        blockEventReporter.reportMined(pos);
     }
 }

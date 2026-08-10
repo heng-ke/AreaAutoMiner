@@ -3,23 +3,23 @@ package xyz.hengke.areaautominer.helper;
 import net.minecraft.util.math.BlockPos;
 import xyz.hengke.areaautominer.config.MiningConfig;
 import xyz.hengke.areaautominer.context.state.RegionState;
-import xyz.hengke.areaautominer.context.state.RollbackState;
 import xyz.hengke.areaautominer.context.state.TraversalState;
 import xyz.hengke.areaautominer.model.MinerMod;
 
 /**
- * 蛇形遍历驱动：只依赖区域边界、遍历游标与回滚恢复点，不感知其他状态。
+ * 蛇形遍历驱动：只依赖区域边界与遍历游标，不感知其他状态。
+ *
+ * <p>方案 9：回滚恢复点逻辑已上移至 {@link AdvanceCoordinator}，本类回归纯遍历
+ * （移除 RollbackState 依赖）；{@link #seek} 提供游标跳转原语供协调者使用。</p>
  */
 public class AreaIterator {
     private final RegionState region;
     private final TraversalState traversal;
-    private final RollbackState rollback;
     private final MiningConfig config;
 
-    public AreaIterator(RegionState region, TraversalState traversal, RollbackState rollback, MiningConfig config) {
+    public AreaIterator(RegionState region, TraversalState traversal, MiningConfig config) {
         this.region = region;
         this.traversal = traversal;
-        this.rollback = rollback;
         this.config = config;
     }
 
@@ -104,20 +104,18 @@ public class AreaIterator {
     }
 
     public boolean advancePosition() {
-        // 回滚恢复点：挖完回滚方块后跳回主遍历中断点，避免破坏蛇形遍历序列
-        BlockPos resume = rollback.getRollbackResumePos();
-        if (resume != null) {
-            traversal.setCurrentX(resume.getX());
-            traversal.setCurrentY(resume.getY());
-            traversal.setCurrentZ(resume.getZ());
-            rollback.setRollbackResumePos(null);
-            return true;  // 不推进，下 tick 从恢复点继续（若该位置已是空气，BlockFinder 会自动跳过并正常 advance）
-        }
         if (config.minerMod == MinerMod.FROM_TOP_DOWN) {
             return advanceFromTopDown();
         } else {
             return advanceFromBottomUp();
         }
+    }
+
+    /** 跳转游标到指定位置（回滚恢复点由 AdvanceCoordinator 调用） */
+    public void seek(BlockPos pos) {
+        traversal.setCurrentX(pos.getX());
+        traversal.setCurrentY(pos.getY());
+        traversal.setCurrentZ(pos.getZ());
     }
 
     public BlockPos getCurrentPos() {

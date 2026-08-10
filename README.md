@@ -41,19 +41,22 @@ After both points are selected, press <kbd>K</kbd> (or your rebound key). The mo
 | Fabric API | * (latest for 1.21.11) |
 | Java | >= 21 |
 | Mod Menu | >= 12.0.0 (suggested) |
-| Cloth Config API | bundled |
+| Cloth Config API | >= 21.11.153 (runtime dependency, install separately) |
 
 ## Installation
 
 1. Install [Fabric Loader](https://fabricmc.net/) for Minecraft 1.21.11.
 2. Download [Fabric API](https://modrinth.com/mod/fabric-api) and drop it into your `mods` folder.
-3. (Suggested) Install [Mod Menu](https://modrinth.com/mod/modmenu) to access the config screen.
-4. Drop the AreaAutoMiner `.jar` into your `mods` folder.
-5. Launch the game.
+3. Download [Cloth Config API](https://modrinth.com/mod/cloth-config) (runtime dependency) and drop it into your `mods` folder.
+4. (Suggested) Install [Mod Menu](https://modrinth.com/mod/modmenu) to access the config screen.
+5. Drop the AreaAutoMiner `.jar` into your `mods` folder.
+6. Launch the game.
 
 ## Configuration
 
 Open **Mods → AreaAutoMiner → Config** (requires Mod Menu + Cloth Config), or edit `config/areaautominer.json` directly.
+
+> Numeric config values are auto-clamped to valid ranges on load (timing parameters get a lower bound to prevent deadlocks, distance parameters must be positive, NaN/Infinity fall back to defaults) — editing the JSON by hand won't produce broken states.
 
 ### Timing
 

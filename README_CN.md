@@ -40,19 +40,22 @@
 | Fabric API | *（1.21.11 对应版本） |
 | Java | >= 21 |
 | Mod Menu | >= 12.0.0（建议） |
-| Cloth Config API | 已内置 |
+| Cloth Config API | >= 21.11.153（运行时依赖，需自行安装） |
 
 ## 安装步骤
 
 1. 为 Minecraft 1.21.11 安装 [Fabric Loader](https://fabricmc.net/)。
 2. 下载 [Fabric API](https://modrinth.com/mod/fabric-api)，放入 `mods` 文件夹。
-3. （建议）安装 [Mod Menu](https://modrinth.com/mod/modmenu) 以访问配置界面。
-4. 将 AreaAutoMiner 的 `.jar` 文件放入 `mods` 文件夹。
-5. 启动游戏。
+3. 下载 [Cloth Config API](https://modrinth.com/mod/cloth-config)（运行时依赖），放入 `mods` 文件夹。
+4. （建议）安装 [Mod Menu](https://modrinth.com/mod/modmenu) 以访问配置界面。
+5. 将 AreaAutoMiner 的 `.jar` 文件放入 `mods` 文件夹。
+6. 启动游戏。
 
 ## 配置
 
 打开 **Mods → AreaAutoMiner → Config**（需安装 Mod Menu + Cloth Config），或直接编辑 `config/areaautominer.json`。
+
+> 数值配置在加载时会自动钳制到合法范围（时序参数下限防死循环，距离参数为正，NaN/Infinity 恢复默认值），手动编辑 JSON 时无需担心越界值导致异常。
 
 ### 时序配置
 

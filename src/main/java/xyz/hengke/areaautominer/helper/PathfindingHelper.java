@@ -67,9 +67,9 @@ public class PathfindingHelper {
 
         // 方案A（M3）：寻路范围至少覆盖玩家→目标的水平距离（+2 格余量），
         // 避免目标稍远（> pathFollowRange 默认 32 格）时寻路必然失败、被误判"不可达"而跳过方块
-        double distanceToTarget = Math.sqrt(SpatialHelper.calculateHorizontalDistanceSquared(
+        double distanceToTarget = Math.sqrt(SpatialMath.calculateHorizontalDistanceSquared(
                 client.player.getX(), client.player.getZ(),
-                target.getX() + 0.5, target.getZ() + 0.5));
+                SpatialMath.centerX(target), SpatialMath.centerZ(target)));
         int effectiveRange = Math.max(followRange, (int) Math.ceil(distanceToTarget) + 2);
         if (effectiveRange > MAX_CACHE_RADIUS) effectiveRange = MAX_CACHE_RADIUS;
 

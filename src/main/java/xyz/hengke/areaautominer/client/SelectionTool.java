@@ -4,7 +4,6 @@ import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
-import net.minecraft.text.Text;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.Hand;
 import net.minecraft.util.hit.BlockHitResult;
@@ -13,6 +12,7 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import xyz.hengke.areaautominer.config.MiningConfig;
 import xyz.hengke.areaautominer.service.Messages;
+import xyz.hengke.areaautominer.service.NotificationService;
 
 /**
  * 游戏内区域选择：手持剑右键选点 1，潜行 + 右键选点 2。
@@ -21,12 +21,14 @@ import xyz.hengke.areaautominer.service.Messages;
  */
 public class SelectionTool {
     private final MiningConfig config;
+    private final NotificationService notificationService;
     private BlockPos pos1 = null;
     private BlockPos pos2 = null;
     private boolean swordUsedThisTick = false;
 
-    public SelectionTool(MiningConfig config) {
+    public SelectionTool(MiningConfig config, NotificationService notificationService) {
         this.config = config;
+        this.notificationService = notificationService;
     }
 
     /** 处理 UseItemCallback：命中方块且手持剑时记录选点 */
@@ -43,10 +45,10 @@ public class SelectionTool {
         swordUsedThisTick = true;
         if (!player.isSneaking()) {
             pos1 = hit.getBlockPos();
-            player.sendMessage(Text.literal(Messages.POINT1_RECORDED + pos1), false);
+            notificationService.sendMessage(Messages.POINT1_RECORDED + pos1);
         } else {
             pos2 = hit.getBlockPos();
-            player.sendMessage(Text.literal(Messages.POINT2_RECORDED + pos2), false);
+            notificationService.sendMessage(Messages.POINT2_RECORDED + pos2);
         }
         return ActionResult.SUCCESS;
     }

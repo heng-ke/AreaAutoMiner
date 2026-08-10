@@ -107,9 +107,8 @@ public class MiningConfig implements ConfigData {
 
     @Override
     public void validatePostLoad() throws ConfigData.ValidationException {
-        // 兜底：手动编辑 JSON 将 minerMod 置为 null 时恢复默认，避免 NPE
-        if (minerMod == null) {
-            minerMod = MinerMod.FROM_TOP_DOWN;
-        }
+        // 校验规则（数值边界钳制、NaN/Infinity 兜底）已提取至 MiningConfigValidator（方案 6），
+        // 可独立单测；本方法仅保留 AutoConfig 框架要求的委托入口。
+        MiningConfigValidator.validate(this);
     }
 }

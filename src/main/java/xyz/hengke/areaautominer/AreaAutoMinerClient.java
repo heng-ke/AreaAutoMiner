@@ -11,16 +11,16 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
 import org.lwjgl.glfw.GLFW;
-import xyz.hengke.areaautominer.client.LifecycleManager;
 import xyz.hengke.areaautominer.client.SelectionTool;
 import xyz.hengke.areaautominer.config.MiningConfigHolder;
 import xyz.hengke.areaautominer.controller.MiningController;
 import xyz.hengke.areaautominer.di.MinerComponents;
+import xyz.hengke.areaautominer.lifecycle.PlayerLifecycleManager;
 import xyz.hengke.areaautominer.render.RegionRenderer;
 
 /**
  * 客户端入口：只负责注册事件与分发。
- * 业务逻辑已下沉到 SelectionTool（选区）/ LifecycleManager（死亡与暂停检测）/ MiningController（状态机）。
+ * 业务逻辑已下沉到 SelectionTool（选区）/ PlayerLifecycleManager（死亡与暂停检测）/ MiningController（状态机）。
  */
 public class AreaAutoMinerClient implements ClientModInitializer {
     /** 开始 / 停止挖掘的快捷键，可在游戏内「选项 → 控制」中重新绑定 */
@@ -28,21 +28,22 @@ public class AreaAutoMinerClient implements ClientModInitializer {
             new KeyBinding("key.areaautominer.toggle", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_K, KeyBinding.Category.GAMEPLAY));
 
     private SelectionTool selectionTool;
-    private LifecycleManager lifecycleManager;
+    private PlayerLifecycleManager lifecycleManager;
     private MiningController miningController;
 
     @Override
     public void onInitializeClient() {
         MinerComponents components = new MinerComponents(MinecraftClient.getInstance());
         miningController = components.controller();
-        selectionTool = new SelectionTool(MiningConfigHolder.get());
-        lifecycleManager = new LifecycleManager(miningController);
+        selectionTool = new SelectionTool(MiningConfigHolder.get(), components.notificationService());
+        lifecycleManager = new PlayerLifecycleManager(miningController);
 
         ClientTickEvents.END_CLIENT_TICK.register(this::onClientTick);
         UseItemCallback.EVENT.register(selectionTool::onSwordUse);
         WorldRenderEvents.AFTER_ENTITIES.register(this::onRenderWorld);
         // 帧级视角平滑:在相机更新后、地形绘制前推进转向视角(消除 tick 级 6° 步进)
-        WorldRenderEvents.START_MAIN.register(ctx -> miningController.getCameraHelper().smoothFrame());
+        // LoD-3:经 Controller 的 onRenderFrame 转发,不直接访问内部 helper
+        WorldRenderEvents.START_MAIN.register(ctx -> miningController.onRenderFrame());
 
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             if (miningController.isMining()) {

@@ -34,6 +34,16 @@ public class BreakingState {
         this.lastMinedPos = lastMinedPos;
     }
 
+    /**
+     * 开始一次挖掘会话：首 tick 标记置 true（attackBlock 建立挖掘）+ 挖掘进度归零。
+     * 进入 BREAKING 状态时统一初始化（方案 C2：由 MiningController 在状态转移时调用），
+     * 消除 CameraHelper.finishFacing 与 BlockFinder.findNext 两处重复的跨域写入。
+     */
+    public void beginBreakSession() {
+        this.firstBreakTick = true;
+        this.breakTicks = 0;
+    }
+
     public void reset() {
         firstBreakTick = false;
         breakTicks = 0;
