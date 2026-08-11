@@ -17,7 +17,6 @@ import xyz.hengke.areaautominer.client.SelectionTool;
 import xyz.hengke.areaautominer.config.MiningConfigHolder;
 import xyz.hengke.areaautominer.controller.MiningController;
 import xyz.hengke.areaautominer.di.MinerComponents;
-import xyz.hengke.areaautominer.lifecycle.PlayerLifecycleManager;
 import xyz.hengke.areaautominer.model.PathMode;
 import xyz.hengke.areaautominer.render.RegionRenderer;
 
@@ -29,7 +28,6 @@ public class AreaAutoMinerClient implements ClientModInitializer {
             new KeyBinding("key.areaautominer.toggle", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_K, KeyBinding.Category.GAMEPLAY));
 
     private SelectionTool selectionTool;
-    private PlayerLifecycleManager lifecycleManager;
     private MiningController miningController;
 
     @Override
@@ -37,7 +35,6 @@ public class AreaAutoMinerClient implements ClientModInitializer {
         MinerComponents components = new MinerComponents(MinecraftClient.getInstance());
         miningController = components.controller();
         selectionTool = new SelectionTool(MiningConfigHolder.get(), components.notificationService());
-        lifecycleManager = new PlayerLifecycleManager(miningController);
 
         ClientTickEvents.END_CLIENT_TICK.register(this::onClientTick);
         UseItemCallback.EVENT.register(selectionTool::onSwordUse);
@@ -64,8 +61,6 @@ public class AreaAutoMinerClient implements ClientModInitializer {
     }
 
     private void onClientTick(MinecraftClient client) {
-
-        if (lifecycleManager.handleTick(client)) return;
 
         if (TOGGLE_KEY.wasPressed()) {
             if (!miningController.isMining()) {

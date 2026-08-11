@@ -1,5 +1,8 @@
 package xyz.hengke.areaautominer.state;
 
+import xyz.hengke.areaautominer.model.RegionState;
+import xyz.hengke.areaautominer.model.TraversalState;
+
 public class StateResetter {
     private final SessionState session;
     private final RegionState region;

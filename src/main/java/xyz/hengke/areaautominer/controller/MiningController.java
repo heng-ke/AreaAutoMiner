@@ -2,6 +2,7 @@ package xyz.hengke.areaautominer.controller;
 
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.util.math.BlockPos;
+import xyz.hengke.areaautominer.AreaAutoMiner;
 import xyz.hengke.areaautominer.finder.BlockFinder;
 import xyz.hengke.areaautominer.helper.AdvanceCoordinator;
 import xyz.hengke.areaautominer.helper.BreakingHelper;
@@ -9,6 +10,7 @@ import xyz.hengke.areaautominer.helper.CameraHelper;
 import xyz.hengke.areaautominer.helper.MovementHelper;
 import xyz.hengke.areaautominer.config.MiningConfig;
 import xyz.hengke.areaautominer.lifecycle.SessionLifecycle;
+import xyz.hengke.areaautominer.model.BreakOutcome;
 import xyz.hengke.areaautominer.model.FaceResult;
 import xyz.hengke.areaautominer.model.MinerMod;
 import xyz.hengke.areaautominer.model.MiningState;
@@ -16,10 +18,10 @@ import xyz.hengke.areaautominer.model.PathMode;
 import xyz.hengke.areaautominer.service.Messages;
 import xyz.hengke.areaautominer.service.NotificationService;
 import xyz.hengke.areaautominer.state.BreakingState;
-import xyz.hengke.areaautominer.state.RegionState;
+import xyz.hengke.areaautominer.model.RegionState;
 import xyz.hengke.areaautominer.state.SessionState;
 import xyz.hengke.areaautominer.state.StateResetter;
-import xyz.hengke.areaautominer.state.TraversalState;
+import xyz.hengke.areaautominer.model.TraversalState;
 
 import java.util.List;
 
@@ -59,6 +61,9 @@ public class MiningController {
         this.advanceCoordinator = advanceCoordinator;
 
         session.onEnter(MiningState.BREAKING, breaking::beginBreakSession);
+        session.onExit(MiningState.BREAKING, breaking::reset);
+        session.setIllegalTransitionHandler((from, to) ->
+                AreaAutoMiner.LOGGER.warn("[AreaAutoMiner] 非法状态转移被拒绝: {} -> {}", from, to));
     }
 
     public void startMining(BlockPos p1, BlockPos p2) {
@@ -167,7 +172,8 @@ public class MiningController {
 
             case BREAKING:
                 BlockPos breakTarget = traversal.getPosition();
-                switch (breakingHelper.startBreaking(breakTarget)) {
+                BreakOutcome outcome = breakingHelper.startBreaking(breakTarget);
+                switch (outcome) {
                     case MINED:
                         if (advanceCoordinator.advanceAfterMined(breakTarget)) {
                             session.transitionTo(MiningState.FINDING_BLOCK);
@@ -189,7 +195,10 @@ public class MiningController {
                     case NEED_WALK:
                         session.transitionTo(MiningState.WALKING_TO_BLOCK);
                         break;
+                    case ONGOING:
+                        break;
                     default:
+                        notificationService.logDebug("未处理的挖掘结果: " + outcome);
                         break;
                 }
                 break;

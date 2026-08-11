@@ -2,8 +2,8 @@ package xyz.hengke.areaautominer.helper;
 
 import net.minecraft.util.math.BlockPos;
 import xyz.hengke.areaautominer.config.MiningConfig;
-import xyz.hengke.areaautominer.state.RegionState;
-import xyz.hengke.areaautominer.state.TraversalState;
+import xyz.hengke.areaautominer.model.RegionState;
+import xyz.hengke.areaautominer.model.TraversalState;
 import xyz.hengke.areaautominer.model.MinerMod;
 
 public class AreaIterator {

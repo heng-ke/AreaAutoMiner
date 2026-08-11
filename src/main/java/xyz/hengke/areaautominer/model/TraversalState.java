@@ -1,7 +1,11 @@
-package xyz.hengke.areaautominer.state;
+package xyz.hengke.areaautominer.model;
 
 import net.minecraft.util.math.BlockPos;
 
+/**
+ * 遍历游标：当前扫描位置（纯数据，非会话状态）。
+ * 蛇形遍历推进逻辑见 {@code AreaIterator}。
+ */
 public class TraversalState {
     private int currentX = 0;
     private int currentY = 0;

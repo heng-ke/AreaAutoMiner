@@ -1,7 +1,10 @@
-package xyz.hengke.areaautominer.state;
+package xyz.hengke.areaautominer.model;
 
 import net.minecraft.util.math.BlockPos;
 
+/**
+ * 区域边界（纯数据，非会话状态）。
+ */
 public class RegionState {
     private int minX = 0, minY = 0, minZ = 0;
     private int maxX = 0, maxY = 0, maxZ = 0;

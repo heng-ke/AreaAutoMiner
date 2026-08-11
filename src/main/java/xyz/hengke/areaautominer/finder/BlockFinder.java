@@ -5,7 +5,7 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
 import xyz.hengke.areaautominer.config.MiningConfig;
 import xyz.hengke.areaautominer.state.FacingState;
-import xyz.hengke.areaautominer.state.TraversalState;
+import xyz.hengke.areaautominer.model.TraversalState;
 import xyz.hengke.areaautominer.helper.AdvanceCoordinator;
 import xyz.hengke.areaautominer.helper.CameraHelper;
 import xyz.hengke.areaautominer.helper.ReachChecker;

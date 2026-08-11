@@ -12,7 +12,6 @@ import xyz.hengke.areaautominer.helper.CameraHelper;
 import xyz.hengke.areaautominer.helper.InputHelper;
 import xyz.hengke.areaautominer.helper.MovementHelper;
 import xyz.hengke.areaautominer.helper.PathfindingHelper;
-import xyz.hengke.areaautominer.helper.ToolDurabilityGuard;
 import xyz.hengke.areaautominer.helper.WalkRequester;
 import xyz.hengke.areaautominer.lifecycle.SessionLifecycle;
 import xyz.hengke.areaautominer.service.BlockEventReporter;
@@ -21,10 +20,10 @@ import xyz.hengke.areaautominer.service.NotificationService;
 import xyz.hengke.areaautominer.state.BreakingState;
 import xyz.hengke.areaautominer.state.FacingState;
 import xyz.hengke.areaautominer.state.MovementState;
-import xyz.hengke.areaautominer.state.RegionState;
+import xyz.hengke.areaautominer.model.RegionState;
 import xyz.hengke.areaautominer.state.SessionState;
 import xyz.hengke.areaautominer.state.StateResetter;
-import xyz.hengke.areaautominer.state.TraversalState;
+import xyz.hengke.areaautominer.model.TraversalState;
 
 public class MinerComponents {
     private final StateResetter stateResetter;
@@ -33,7 +32,6 @@ public class MinerComponents {
     private final PathfindingHelper pathfindingHelper;
     private final AreaIterator areaIterator;
     private final CameraHelper cameraHelper;
-    private final ToolDurabilityGuard toolDurabilityGuard;
     private final WalkRequester walkRequester;
     private final BreakingHelper breakingHelper;
     private final MovementHelper movementHelper;
@@ -66,16 +64,14 @@ public class MinerComponents {
         this.completionService = new MiningCompletionService(
                 notificationService, lifecycle, blockEventReporter);
 
-        this.advanceCoordinator = new AdvanceCoordinator(areaIterator,
-                completionService, breaking);
+        this.advanceCoordinator = new AdvanceCoordinator(areaIterator, completionService);
 
         this.cameraHelper = new CameraHelper(client, config, session, movement,
                 facing, inputHelper, notificationService);
-        this.toolDurabilityGuard = new ToolDurabilityGuard(client, config, notificationService);
         this.walkRequester = new WalkRequester(movement);
         this.breakingHelper = new BreakingHelper(client, config,
                 breaking, facing,
-                notificationService, cameraHelper, lifecycle, toolDurabilityGuard, walkRequester);
+                notificationService, cameraHelper, walkRequester);
         this.movementHelper = new MovementHelper(client, config, movement,
                 inputHelper, cameraHelper, notificationService, pathfindingHelper);
         this.blockFinder = new BlockFinder(client, config, traversal,

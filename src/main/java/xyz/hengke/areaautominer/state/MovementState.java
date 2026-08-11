@@ -10,6 +10,7 @@ public class MovementState {
     private boolean movingWait = false;
 
     private int walkTicks = 0;
+    private int retryDelayTicks = 0;
     private double lastPlayerX = 0;
     private double lastPlayerZ = 0;
     private int stuckCounter = 0;
@@ -26,6 +27,7 @@ public class MovementState {
         boolean limitReached = walkCycleBreaker.recordWalkAttempt(targetPos);
 
         this.walkTicks = 0;
+        this.retryDelayTicks = 0;
         this.stuckCounter = 0;
         this.walkRetryCount = 0;
         this.lastPlayerX = playerX;
@@ -41,6 +43,7 @@ public class MovementState {
 
     public void resetWalkSession() {
         this.walkTicks = 0;
+        this.retryDelayTicks = 0;
         this.stuckCounter = 0;
         this.walkRetryCount = 0;
         this.currentPath = null;
@@ -71,6 +74,14 @@ public class MovementState {
 
     public void setWalkTicks(int walkTicks) {
         this.walkTicks = walkTicks;
+    }
+
+    public int getRetryDelayTicks() {
+        return retryDelayTicks;
+    }
+
+    public void setRetryDelayTicks(int retryDelayTicks) {
+        this.retryDelayTicks = retryDelayTicks;
     }
 
     public double getLastPlayerX() {
@@ -157,6 +168,7 @@ public class MovementState {
         waitTicks = 0;
         movingWait = false;
         walkTicks = 0;
+        retryDelayTicks = 0;
         lastPlayerX = 0;
         lastPlayerZ = 0;
         stuckCounter = 0;

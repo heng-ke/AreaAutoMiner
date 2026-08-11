@@ -9,7 +9,6 @@ import net.minecraft.world.GameMode;
 import xyz.hengke.areaautominer.config.MiningConfig;
 import xyz.hengke.areaautominer.state.BreakingState;
 import xyz.hengke.areaautominer.state.FacingState;
-import xyz.hengke.areaautominer.lifecycle.SessionLifecycle;
 import xyz.hengke.areaautominer.model.BreakOutcome;
 import xyz.hengke.areaautominer.service.NotificationService;
 
@@ -22,32 +21,22 @@ public class BreakingHelper {
     private final FacingState facing;
     private final NotificationService notificationService;
     private final CameraHelper cameraHelper;
-    private final SessionLifecycle lifecycle;
-    private final ToolDurabilityGuard toolDurabilityGuard;
     private final WalkRequester walkRequester;
 
     public BreakingHelper(MinecraftClient client, MiningConfig config,
                           BreakingState breaking, FacingState facing,
                           NotificationService notificationService,
-                          CameraHelper cameraHelper, SessionLifecycle lifecycle,
-                          ToolDurabilityGuard toolDurabilityGuard, WalkRequester walkRequester) {
+                          CameraHelper cameraHelper, WalkRequester walkRequester) {
         this.client = client;
         this.config = config;
         this.breaking = breaking;
         this.facing = facing;
         this.notificationService = notificationService;
         this.cameraHelper = cameraHelper;
-        this.lifecycle = lifecycle;
-        this.toolDurabilityGuard = toolDurabilityGuard;
         this.walkRequester = walkRequester;
     }
 
     public BreakOutcome startBreaking(BlockPos targetPos) {
-        if (DangerChecker.isLavaAroundPlayer(client)) {
-            notificationService.logDebug("检测到玩家周围有岩浆，跳过方块: " + targetPos);
-            return BreakOutcome.SKIPPED;
-        }
-
         if (client.world.getBlockState(targetPos).isAir()) {
             return BreakOutcome.EXTERNALLY_REMOVED;
         }
@@ -102,11 +91,6 @@ public class BreakingHelper {
     }
 
     private BreakOutcome breakBlockSurvival(BlockPos targetPos) {
-        if (toolDurabilityGuard.shouldPause()) {
-            lifecycle.teardown();
-            return BreakOutcome.ONGOING;
-        }
-
         Direction direction = SpatialMath.calculateDirection(client, targetPos);
 
         if (breaking.isFirstBreakTick()) {

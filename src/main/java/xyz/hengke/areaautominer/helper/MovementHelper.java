@@ -6,7 +6,6 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
 import xyz.hengke.areaautominer.config.MiningConfig;
 import xyz.hengke.areaautominer.state.MovementState;
-import xyz.hengke.areaautominer.model.DangerType;
 import xyz.hengke.areaautominer.model.PathMode;
 import xyz.hengke.areaautominer.model.WalkResult;
 import xyz.hengke.areaautominer.service.NotificationService;
@@ -19,8 +18,8 @@ public class MovementHelper {
     private static final double STUCK_ANCHOR_RESET_DISTANCE = 0.5;
     private static final double CLOSE_ENOUGH_DISTANCE = 1.5;
     private static final double NODE_ARRIVE_THRESHOLD = 1.5;
-    private static final int RETRY_DELAY_TICKS = -10;
-    private static final int UNLOADED_RETRY_DELAY_TICKS = -20;
+    private static final int RETRY_DELAY_TICKS = 10;
+    private static final int UNLOADED_RETRY_DELAY_TICKS = 20;
     private static final int JUMP_COOLDOWN_TICKS = 10;
     private static final int JUMP_COOLDOWN_RETRY_TICKS = 15;
     private static final float TURN_BEFORE_WALK_THRESHOLD = 30.0f;
@@ -50,14 +49,14 @@ public class MovementHelper {
 
     public WalkResult walkToBlock(BlockPos targetPos) {
         tickJumpCooldown();
-        if (checkDangerAndSkip(targetPos)) return WalkResult.SKIPPED;
 
-        movement.setWalkTicks(movement.getWalkTicks() + 1);
-
-        if (movement.getWalkTicks() <= 0) {
+        if (movement.getRetryDelayTicks() > 0) {
+            movement.setRetryDelayTicks(movement.getRetryDelayTicks() - 1);
             inputHelper.releaseAllKeys();
             return WalkResult.ONGOING;
         }
+
+        movement.setWalkTicks(movement.getWalkTicks() + 1);
 
         updateStuckDetection();
 
@@ -74,14 +73,6 @@ public class MovementHelper {
         if (movement.getJumpCooldown() > 0) {
             movement.setJumpCooldown(movement.getJumpCooldown() - 1);
         }
-    }
-
-    private boolean checkDangerAndSkip(BlockPos targetPos) {
-        if (DangerChecker.evaluate(client, targetPos) == DangerType.NONE) return false;
-        inputHelper.releaseAllKeys();
-        notificationService.logDebug("检测到危险环境（岩浆/虚空），跳过方块: " + targetPos);
-        movement.resetWalkSession();
-        return true;
     }
 
     private void updateStuckDetection() {
@@ -295,7 +286,8 @@ public class MovementHelper {
         if (movement.getWalkRetryCount() <= config.maxWalkRetries) {
             notificationService.logDebug(reason + "，第 " + movement.getWalkRetryCount() + " 次重试（重算路径）");
             inputHelper.releaseAllKeys();
-            movement.setWalkTicks(retryDelayTicks);
+            movement.setWalkTicks(0);
+            movement.setRetryDelayTicks(retryDelayTicks);
             resetStuckAnchor();
             movement.setCurrentPath(null);
             movement.setTurningInPlace(false);
