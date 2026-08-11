@@ -29,6 +29,7 @@
   "text.autoconfig.areaautominer.option.facingThresholdDegrees": "视角对准阈值",
   "text.autoconfig.areaautominer.option.reFacingThresholdDegrees": "挖掘重对准阈值",
   "text.autoconfig.areaautominer.option.debug": "调试模式",
+  "text.autoconfig.areaautominer.option.showPath": "显示寻路路径",
 
   "text.autoconfig.areaautominer.option.moveWaitTicks.@Tooltip": "移动后等待稳定的时间（单位：ticks）",
   "text.autoconfig.areaautominer.option.maxAirSkipPerTick.@Tooltip": "每 tick 查找目标时最多跳过的空气方块数量，限制单 tick 工作量",
@@ -50,5 +51,6 @@
   "text.autoconfig.areaautominer.option.facingThresholdDegrees.@Tooltip[0]": "视角与目标的偏差小于此角度（度）即视为已对准，直接开始挖掘",
   "text.autoconfig.areaautominer.option.facingThresholdDegrees.@Tooltip[1]": "越小越精确，但会增加转向耗时",
   "text.autoconfig.areaautominer.option.reFacingThresholdDegrees.@Tooltip": "挖掘过程中视角偏差超过此角度（度）时中断挖掘重新转向",
-  "text.autoconfig.areaautominer.option.debug.@Tooltip": "启用调试日志输出"
+  "text.autoconfig.areaautominer.option.debug.@Tooltip": "启用调试日志输出",
+  "text.autoconfig.areaautominer.option.showPath.@Tooltip": "调试：以面包屑式节点线框显示当前寻路路径（青色节点、黄色终点）"
 }

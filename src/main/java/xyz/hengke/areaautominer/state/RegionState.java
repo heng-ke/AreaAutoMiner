@@ -2,10 +2,6 @@ package xyz.hengke.areaautominer.state;
 
 import net.minecraft.util.math.BlockPos;
 
-/**
- * 区域状态：选区两点的规范化边界（min/max）。
- * 原始选区两点由 SelectionTool 唯一持有；此处只负责由两点计算遍历边界。
- */
 public class RegionState {
     private int minX = 0, minY = 0, minZ = 0;
     private int maxX = 0, maxY = 0, maxZ = 0;

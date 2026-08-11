@@ -12,19 +12,15 @@ import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.util.shape.VoxelShapes;
 
-/**
- * 选区 / 目标方块线框渲染。
- * 线框绘制复用 vanilla {@link VertexRendering#drawOutline}（1.21.11 中旧 drawBox 的更名版），
- * 不再手写 12 条边线。
- */
+import java.util.List;
+
 public class RegionRenderer {
     private static final float MAX_RENDER_DISTANCE = 256.0f;
-    /** 线框线宽（与原版方块选中框一致） */
     private static final float OUTLINE_WIDTH = 2.0f;
-    /** 选区绿色（ARGB） */
     private static final int REGION_COLOR = 0xFF00FF00;
-    /** 目标方块红色（ARGB） */
     private static final int TARGET_COLOR = 0xFFFF0000;
+    private static final int PATH_NODE_COLOR = 0xFF00FFFF;
+    private static final int PATH_END_COLOR = 0xFFFFFF00;
 
     public static void renderRegion(WorldRenderContext context, BlockPos pos1, BlockPos pos2) {
         if (pos1 == null || pos2 == null) return;
@@ -40,13 +36,24 @@ public class RegionRenderer {
         renderBoxOutline(context, selectionBox, REGION_COLOR);
     }
 
-    /** 绘制当前挖掘目标方块的红色边框（挖掘进行中时由客户端每帧调用） */
     public static void renderTargetBlock(WorldRenderContext context, BlockPos pos) {
         if (pos == null) return;
         renderBoxOutline(context, new Box(
                 pos.getX(), pos.getY(), pos.getZ(),
                 pos.getX() + 1.0, pos.getY() + 1.0, pos.getZ() + 1.0),
                 TARGET_COLOR);
+    }
+    public static void renderPath(WorldRenderContext context, List<BlockPos> nodes) {
+        if (nodes == null || nodes.isEmpty()) return;
+        int endIndex = nodes.size() - 1;
+        for (int i = 0; i < nodes.size(); i++) {
+            BlockPos pos = nodes.get(i);
+            int color = (i == endIndex) ? PATH_END_COLOR : PATH_NODE_COLOR;
+            renderBoxOutline(context, new Box(
+                    pos.getX(), pos.getY(), pos.getZ(),
+                    pos.getX() + 1.0, pos.getY() + 1.0, pos.getZ() + 1.0),
+                    color);
+        }
     }
 
     private static void renderBoxOutline(WorldRenderContext context, Box box, int color) {

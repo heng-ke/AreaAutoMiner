@@ -2,9 +2,6 @@ package xyz.hengke.areaautominer.state;
 
 import net.minecraft.util.math.BlockPos;
 
-/**
- * 遍历游标：当前正在处理的方块坐标，由 AreaIterator 推进。
- */
 public class TraversalState {
     private int currentX = 0;
     private int currentY = 0;

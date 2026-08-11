@@ -14,11 +14,6 @@ import xyz.hengke.areaautominer.config.MiningConfig;
 import xyz.hengke.areaautominer.service.Messages;
 import xyz.hengke.areaautominer.service.NotificationService;
 
-/**
- * 游戏内区域选择：手持剑右键选点 1，潜行 + 右键选点 2。
- * pos1/pos2 的唯一持有者，渲染与开始挖掘都从这里取。
- * 选区射线距离由配置 selectionMaxDistance 控制。
- */
 public class SelectionTool {
     private final MiningConfig config;
     private final NotificationService notificationService;
@@ -31,7 +26,6 @@ public class SelectionTool {
         this.notificationService = notificationService;
     }
 
-    /** 处理 UseItemCallback：命中方块且手持剑时记录选点 */
     public ActionResult onSwordUse(PlayerEntity player, World world, Hand hand) {
         if (hand != Hand.MAIN_HAND) return ActionResult.PASS;
         if (swordUsedThisTick) return ActionResult.PASS;
@@ -61,7 +55,6 @@ public class SelectionTool {
         return pos2;
     }
 
-    /** 每 tick 末尾调用，清除本 tick 的剑使用标记 */
     public void endTick() {
         swordUsedThisTick = false;
     }

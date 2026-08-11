@@ -98,6 +98,7 @@ Open **Mods → AreaAutoMiner → Config** (requires Mod Menu + Cloth Config), o
 | Option | Default | Description |
 | --- | --- | --- |
 | Debug mode | false | Enable debug log output |
+| Show pathfinding path | false | Render the current pathfinding path as breadcrumb node outlines (cyan nodes, yellow end) |
 
 ## How It Works
 

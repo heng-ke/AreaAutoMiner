@@ -9,21 +9,10 @@ import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.RaycastContext;
 import xyz.hengke.areaautominer.config.MiningConfig;
 
-/**
- * 可达性/视线判定（方案 7 彻底版，自 SpatialHelper 拆分）：挖掘范围与可见面查询。
- *
- * <p>变化原因单一（可达性判定策略），与纯数学换算（SpatialMath）、环境危险检测
- * （DangerChecker）彻底分离。DRY-3：{@link #isLineClear} 提供单射线畅通判定，
- * MovementHelper 的短距贪心视线检查复用本实现，消除双实现。</p>
- */
 public final class ReachChecker {
     private ReachChecker() {
     }
 
-    /**
-     * 检查玩家是否在目标方块的挖掘范围内（水平距离 + 垂直距离 + 视线）
-     * @return true 表示可直接挖掘
-     */
     public static boolean isBlockWithinReach(MinecraftClient client, BlockPos targetPos, MiningConfig config) {
         double targetX = SpatialMath.centerX(targetPos);
         double targetY = SpatialMath.centerY(targetPos);
@@ -42,12 +31,6 @@ public final class ReachChecker {
         return withinHorizontalRange && withinVerticalRange && hasLineOfSightToAnyFace(client, targetPos);
     }
 
-    /**
-     * from→to 射线是否畅通（未被 targetPos 之外的方块阻挡；目标自身不视为阻挡）。
-     * MovementHelper 短距贪心的视线检查复用（DRY-3，原 isRayBlocked 双实现）。
-     *
-     * @return true 表示射线畅通（MISS 或命中目标自身）
-     */
     public static boolean isLineClear(MinecraftClient client, Vec3d from, Vec3d to, BlockPos targetPos) {
         BlockHitResult hit = client.world.raycast(
                 new RaycastContext(from, to, RaycastContext.ShapeType.OUTLINE,

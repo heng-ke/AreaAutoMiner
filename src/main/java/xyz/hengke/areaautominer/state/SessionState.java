@@ -2,12 +2,13 @@ package xyz.hengke.areaautominer.state;
 
 import xyz.hengke.areaautominer.model.MiningState;
 
-/**
- * 会话状态：是否在挖掘、状态机当前状态。
- */
+import java.util.EnumMap;
+import java.util.Map;
+
 public class SessionState {
     private boolean isMining = false;
     private MiningState state = MiningState.IDLE;
+    private final Map<MiningState, Runnable> enterActions = new EnumMap<>(MiningState.class);
 
     public boolean isMining() {
         return isMining;
@@ -20,12 +21,16 @@ public class SessionState {
     public MiningState getState() {
         return state;
     }
-
-    public void setState(MiningState state) {
-        this.state = state;
+    public void onEnter(MiningState state, Runnable action) {
+        enterActions.put(state, action);
+    }
+    public void transitionTo(MiningState newState) {
+        if (newState == this.state) return;
+        this.state = newState;
+        Runnable action = enterActions.get(newState);
+        if (action != null) action.run();
     }
 
-    /** 会话归零：停止挖掘并回到 IDLE */
     public void reset() {
         isMining = false;
         state = MiningState.IDLE;

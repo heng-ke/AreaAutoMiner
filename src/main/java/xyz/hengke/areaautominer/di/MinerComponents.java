@@ -26,12 +26,6 @@ import xyz.hengke.areaautominer.state.SessionState;
 import xyz.hengke.areaautominer.state.StateResetter;
 import xyz.hengke.areaautominer.state.TraversalState;
 
-/**
- * 手动依赖组合根：集中装配所有组件，消除分散在 MiningController 构造器中的手工 new。
- * 新增依赖只需在此处接线一次；各组件构造参数即其真实依赖面。
- *
- * <p>无中间层：7 个状态对象由本类直接创建，按需注入各组件（各组件只依赖它真正需要的 state）。</p>
- */
 public class MinerComponents {
     private final StateResetter stateResetter;
     private final InputHelper inputHelper;
@@ -53,7 +47,6 @@ public class MinerComponents {
     public MinerComponents(MinecraftClient client) {
         MiningConfig config = MiningConfigHolder.get();
 
-        // 6 个状态对象由组合根统一创建，按需注入（无 MiningContext 中间层；回滚状态已随方案 B 移除）
         SessionState session = new SessionState();
         RegionState region = new RegionState();
         TraversalState traversal = new TraversalState();
@@ -79,15 +72,15 @@ public class MinerComponents {
         this.cameraHelper = new CameraHelper(client, config, session, movement,
                 facing, inputHelper, notificationService);
         this.toolDurabilityGuard = new ToolDurabilityGuard(client, config, notificationService);
-        this.walkRequester = new WalkRequester(movement, session);
+        this.walkRequester = new WalkRequester(movement);
         this.breakingHelper = new BreakingHelper(client, config,
-                breaking, facing, session,
+                breaking, facing,
                 notificationService, cameraHelper, lifecycle, toolDurabilityGuard, walkRequester);
-        this.movementHelper = new MovementHelper(client, config, movement, session,
+        this.movementHelper = new MovementHelper(client, config, movement,
                 inputHelper, cameraHelper, notificationService, pathfindingHelper);
         this.blockFinder = new BlockFinder(client, config, traversal,
                 cameraHelper, notificationService, advanceCoordinator, walkRequester,
-                facing, session);
+                facing);
 
         this.controller = new MiningController(client, session, region, traversal, breaking,
                 stateResetter, config, blockFinder, movementHelper, cameraHelper,

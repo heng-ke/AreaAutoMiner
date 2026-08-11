@@ -1,7 +1,6 @@
 package xyz.hengke.areaautominer.model;
 
-public enum WalkResult {
+public enum FaceResult {
     ONGOING,
-    ARRIVED,
-    SKIPPED
+    CONVERGED
 }

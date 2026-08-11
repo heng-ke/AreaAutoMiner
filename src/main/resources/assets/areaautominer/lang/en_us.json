@@ -29,6 +29,7 @@
   "text.autoconfig.areaautominer.option.facingThresholdDegrees": "Facing Threshold (deg)",
   "text.autoconfig.areaautominer.option.reFacingThresholdDegrees": "Re-facing Threshold (deg)",
   "text.autoconfig.areaautominer.option.debug": "Debug Mode",
+  "text.autoconfig.areaautominer.option.showPath": "Show Pathfinding Path",
 
   "text.autoconfig.areaautominer.option.moveWaitTicks.@Tooltip": "Ticks to wait for movement to stabilize",
   "text.autoconfig.areaautominer.option.maxAirSkipPerTick.@Tooltip": "Max air blocks skipped per tick while searching for the next target",
@@ -50,5 +51,6 @@
   "text.autoconfig.areaautominer.option.facingThresholdDegrees.@Tooltip[0]": "Angle deviation below this (deg) counts as aligned, mining starts immediately",
   "text.autoconfig.areaautominer.option.facingThresholdDegrees.@Tooltip[1]": "Smaller is more precise but increases facing time",
   "text.autoconfig.areaautominer.option.reFacingThresholdDegrees.@Tooltip": "Interrupt mining and re-face when deviation exceeds this (deg)",
-  "text.autoconfig.areaautominer.option.debug.@Tooltip": "Enable debug log output"
+  "text.autoconfig.areaautominer.option.debug.@Tooltip": "Enable debug log output",
+  "text.autoconfig.areaautominer.option.showPath.@Tooltip": "Debug: render the current pathfinding path as breadcrumb node outlines (cyan nodes, yellow end)"
 }
